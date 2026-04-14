@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}VoiceCheck — Compare Scenarios{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Compare Scenarios</h1>
+    <p class="page-subtitle">Side-by-side latency percentiles and pass rates</p>
+  </div>
+</div>
+
+<div id="compare-content">
+  <div class="loading"><div class="spinner"></div><br>Loading scenarios...</div>
+</div>
+
+<div style="margin-top:2rem;">
+  <h2 style="font-size:1.1rem;margin-bottom:1rem;">P95 First Byte Latency</h2>
+  <div style="position:relative;height:250px;">
+    <canvas id="compare-chart"></canvas>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function() {
+  const container = document.getElementById('compare-content');
+
+  try {
+    const scenarios = await VC.fetchAPI('/api/scenarios');
+
+    if (!scenarios.length) {
+      container.innerHTML = '<div class="empty">No scenarios to compare. Run <code>voicecheck run</code> first.</div>';
+      return;
+    }
+
+    let html = `<div class="table-wrap"><table class="compare-table">
+      <thead><tr>
+        <th>Scenario</th>
+        <th>Runs</th>
+        <th>Pass Rate</th>
+        <th>Avg First Byte</th>
+        <th>P50</th>
+        <th>P95</th>
+        <th>P99</th>
+        <th>Avg Total</th>
+        <th>P50 Total</th>
+        <th>P95 Total</th>
+        <th>P99 Total</th>
+        <th>Last Run</th>
+      </tr></thead><tbody>`;
+
+    for (const s of scenarios) {
+      const passRate = s.run_count ? (s.pass_count / s.run_count * 100) : 0;
+
+      html += `<tr onclick="VC.go('/scenario/${encodeURIComponent(s.scenario_name)}')">
+        <td><strong>${VC.esc(s.scenario_name)}</strong></td>
+        <td>${s.run_count}</td>
+        <td class="${VC.rateClass(passRate)}">${passRate.toFixed(0)}%</td>
+        <td class="${VC.latencyClass(s.avg_latency)}">${VC.formatMs(s.avg_latency)}</td>
+        <td class="${VC.latencyClass(s.p50_first_byte_ms)}">${VC.formatMs(s.p50_first_byte_ms)}</td>
+        <td class="${VC.latencyClass(s.p95_first_byte_ms)}">${VC.formatMs(s.p95_first_byte_ms)}</td>
+        <td class="${VC.latencyClass(s.p99_first_byte_ms)}">${VC.formatMs(s.p99_first_byte_ms)}</td>
+        <td class="${VC.latencyClass(s.p50_total_ms)}">${VC.formatMs(s.p50_total_ms)}</td>
+        <td class="${VC.latencyClass(s.p50_total_ms)}">${VC.formatMs(s.p50_total_ms)}</td>
+        <td class="${VC.latencyClass(s.p95_total_ms)}">${VC.formatMs(s.p95_total_ms)}</td>
+        <td class="${VC.latencyClass(s.p99_total_ms)}">${VC.formatMs(s.p99_total_ms)}</td>
+        <td>${VC.formatDate(s.last_run)}</td>
+      </tr>`;
+    }
+
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+
+    // P95 bar chart
+    VC.createBarChart(
+      'compare-chart',
+      scenarios.map(s => ({
+        name: s.scenario_name,
+        value: s.p95_first_byte_ms || 0,
+      })),
+      'P95 First Byte (ms)',
+      'rgba(99,102,241,0.6)'
+    );
+
+  } catch (err) {
+    container.innerHTML = `<div class="empty">Error: ${VC.esc(err.message)}</div>`;
+  }
+})();
+</script>
+{% endblock %}

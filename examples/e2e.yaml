@@ -1,0 +1,81 @@
+name: "E2E — Voice agent test"
+description: >
+  Combined E2E scenario with two modes:
+    Default: Sends fixed questions from the list below.
+    Auto (--auto): LLM persona drives a dynamic conversation.
+
+  Default mode is deterministic and needs no OPENAI_API_KEY (with --skip-llm-judge).
+  Auto mode requires OPENAI_API_KEY for persona generation.
+
+transport:
+  type: livekit
+  mode: token_server
+  config:
+    token_url: "${TOKEN_SERVER_URL}/token"
+    token_request:
+      kid_id: "${TEST_KID_ID}"
+      agent_id: "${TEST_AGENT_ID}"
+    token_headers:
+      Authorization: "Bearer ${FIREBASE_TEST_TOKEN}"
+    response_mapping:
+      url_field: "server_url"
+      token_field: "participant_token"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+# ── Default mode: fixed questions ─────────────────────────────
+# These are sent one by one. Override from CLI with --questions.
+questions:
+  - "Hi there, my name is Emma!"
+  - "Can you tell me something fun about butterflies?"
+  - "What's your favorite color?"
+  - "Can you tell me a short story about a brave kitten?"
+
+# ── Auto mode (--auto): LLM persona conversation ─────────────
+# When --auto is passed, questions are ignored and this persona
+# drives a free-flowing conversation with the agent.
+persona:
+  name: "Emma"
+  age: 7
+  personality: "curious, friendly, loves animals and stories, gets excited easily"
+  communication_style: "short sentences, uses 'wow' and 'cool' a lot, asks follow-up questions"
+  goals:
+    - "Have a fun conversation about animals"
+    - "Ask the agent to tell a short story"
+    - "Say goodbye politely at the end"
+  topics:
+    - "butterflies"
+    - "kittens"
+    - "favorite colors"
+    - "bedtime stories"
+  instructions: >
+    Start by saying hi and your name. Be enthusiastic and curious. Ask about
+    animals or colors. If the agent says something interesting, say "wow" or
+    "that's so cool" and ask a follow-up. After a few turns, ask the agent
+    to tell you a short story. End by saying thank you and bye.
+  model: gpt-4o-mini
+  max_turns: 5
+  opening: "Hi! My name is Emma and I'm seven years old!"
+
+# ── Evaluators (apply to both modes) ─────────────────────────
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 5000
+  - type: turn_count
+    min_words: 5
+
+conversation_eval:
+  criteria:
+    - "Agent greeted the child warmly and used their name"
+    - "Agent gave age-appropriate, engaging responses"
+    - "Agent responses were concise enough for voice conversation"
+    - "Agent maintained a friendly, encouraging tone throughout"
+  min_score: 0.7
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 20.0
+  silence_threshold: 2.0

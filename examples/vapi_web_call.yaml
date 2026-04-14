@@ -1,0 +1,39 @@
+name: "VAPI — web call voice agent test"
+description: >
+  Test a VAPI voice agent via web call.
+  Creates a web call through the VAPI API, streams audio over WebSocket,
+  and evaluates the agent's responses.
+
+transport:
+  type: vapi
+  mode: web_call
+  config:
+    api_key: "${VAPI_API_KEY}"
+    assistant_id: "${VAPI_ASSISTANT_ID}"
+    audio_format: "pcm_s16le"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+turns:
+  - user: "Hi there, can you help me?"
+    expect:
+      - type: latency
+        max_first_byte_ms: 3000
+      - type: turn_count
+        min_words: 3
+      - type: keyword
+        forbidden: ["error", "undefined"]
+
+  - user: "What services do you offer?"
+    expect:
+      - type: latency
+        max_first_byte_ms: 3000
+      - type: turn_count
+        min_words: 5
+
+settings:
+  turn_timeout: 15.0
+  silence_threshold: 1.5

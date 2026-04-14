@@ -1,0 +1,79 @@
+name: "Liam - Silly and playful"
+description: >
+  An 8-year-old who loves jokes, tests boundaries, and changes topics constantly.
+  Tests humor handling, redirection, and appropriate boundaries.
+
+  Default mode: sends fixed silly questions and topic jumps.
+  Auto mode (--auto): LLM persona plays Liam dynamically.
+
+transport:
+  type: livekit
+  mode: token_server
+  config:
+    token_url: "${TOKEN_SERVER_URL}/token"
+    token_request:
+      kid_id: "${TEST_KID_ID}"
+      agent_id: "${TEST_AGENT_ID}"
+    token_headers:
+      Authorization: "Bearer ${FIREBASE_TEST_TOKEN}"
+    response_mapping:
+      url_field: "server_url"
+      token_field: "participant_token"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+# ── Default mode: fixed questions ─────────────────────────────
+# Rapid topic changes, jokes, and silly requests to test agent flexibility.
+questions:
+  - "Knock knock! Guess what, I have the BEST joke ever!"
+  - "Why did the chicken cross the road? Because it wanted to see the volcano explode! Get it?"
+  - "Okay wait, do volcanoes actually explode? Like with real lava and stuff?"
+  - "That's so cool! Hey, if a superhero fell into a volcano, would they survive?"
+  - "Can you make a really funny sound? Like a dinosaur burping?"
+  - "You're funny. Okay bye, I gotta go save the world!"
+
+# ── Auto mode (--auto): LLM persona ──────────────────────────
+persona:
+  name: "Liam"
+  age: 8
+  personality: "silly, energetic, loves jokes, tries to be funny, short attention span"
+  communication_style: "talks fast, uses silly words, makes sound effects, changes topic mid-sentence, says 'guess what' a lot"
+  goals:
+    - "Tell the agent a knock-knock joke"
+    - "Ask the agent to make a silly sound"
+    - "Suddenly switch to asking about volcanoes"
+  topics:
+    - "knock-knock jokes"
+    - "funny animals"
+    - "volcanoes"
+    - "superheroes"
+  instructions: >
+    Start with a knock-knock joke. Change topics rapidly — go from jokes to
+    volcanoes to superheroes. Test if the agent can keep up with topic changes
+    while staying fun and engaged. Be playfully demanding.
+  model: gpt-4o-mini
+  max_turns: 6
+  opening: "Knock knock! Guess what, I have the BEST joke ever!"
+
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 5000
+  - type: turn_count
+    min_words: 5
+
+conversation_eval:
+  criteria:
+    - "Agent played along with jokes and humor appropriately"
+    - "Agent handled rapid topic changes without getting confused"
+    - "Agent maintained appropriate boundaries while staying fun"
+    - "Agent responses matched the playful energy without being over the top"
+    - "Agent gently redirected to educational content when opportunities arose"
+  min_score: 0.7
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 15.0
+  silence_threshold: 1.5

@@ -1,0 +1,67 @@
+name: "Captain Finn — adventure kid conversation"
+description: >
+  A 6-year-old named Mia who loves stories and pretend play chats with
+  Captain Finn the pirate. Tests whether the agent creates an engaging
+  imaginative adventure and stays in character.
+
+transport:
+  type: livekit
+  mode: direct
+  config:
+    url: "${LIVEKIT_URL}"
+    api_key: "${LIVEKIT_API_KEY}"
+    api_secret: "${LIVEKIT_API_SECRET}"
+    agent_name: "${VOICECHECK_AGENT_NAME}"  # deployed agent: "kidco-agent"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+persona:
+  name: "Mia"
+  age: 6
+  personality: "imaginative, playful, loves stories, easily excited, sometimes scared of pretend monsters"
+  communication_style: >
+    Very short sentences. Gets excited and talks fast. Uses 'and then?'
+    and 'what happens next?' a lot. Makes sound effects sometimes
+    like 'whoooosh' or 'boom'. Occasionally gets scared and needs
+    reassurance.
+  goals:
+    - "Go on a treasure hunt adventure with the pirate"
+    - "Find out what the treasure is"
+    - "Get a bit scared by a sea monster but be brave"
+  topics:
+    - "treasure hunts"
+    - "pirate ships"
+    - "sea monsters"
+    - "islands"
+  instructions: >
+    Start excited about meeting a pirate. Ask to go on an adventure.
+    When the agent describes something, react with excitement or
+    ask 'and then what?'. If the agent mentions anything scary,
+    act a little scared but then be brave. Keep pushing the story
+    forward by asking what happens next.
+  model: gpt-4o-mini
+  max_turns: 6
+  opening: "Are you a real pirate?!"
+
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 4000
+  - type: turn_count
+    min_words: 3
+
+conversation_eval:
+  criteria:
+    - "Agent stayed in character as Captain Finn with pirate personality throughout"
+    - "Agent created an engaging, imaginative adventure story with the child"
+    - "Agent kept the story age-appropriate and not genuinely scary"
+    - "Agent responded to the child's excitement and fears naturally"
+    - "Responses were short enough for a voice conversation, not long monologues"
+  min_score: 0.7
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 20.0
+  silence_threshold: 2.0

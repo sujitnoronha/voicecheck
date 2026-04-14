@@ -1,0 +1,33 @@
+name: "Token server integration test"
+description: "Test the full stack via token server — auth, DB lookup, agent dispatch"
+
+transport:
+  type: livekit
+  mode: token_server
+  config:
+    token_url: "${TOKEN_SERVER_URL}/token"
+    token_request:
+      kid_id: "${TEST_KID_ID}"
+      agent_id: "${TEST_AGENT_ID}"
+    token_headers:
+      Authorization: "Bearer ${FIREBASE_TEST_TOKEN}"
+    response_mapping:
+      url_field: "server_url"
+      token_field: "participant_token"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+turns:
+  - user: "Hello!"
+    expect:
+      - type: latency
+        max_first_byte_ms: 5000
+      - type: turn_count
+        min_words: 3
+
+settings:
+  turn_timeout: 20.0
+  silence_threshold: 2.0

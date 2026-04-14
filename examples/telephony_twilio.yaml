@@ -1,0 +1,46 @@
+name: "Telephony — call a voice agent via phone"
+description: >
+  Test any voice agent by calling its phone number via Twilio.
+  Provider-agnostic — works with agents deployed on VAPI, Retell,
+  LiveKit, or any platform with a phone number.
+
+  Prerequisites:
+  - Twilio account with a phone number
+  - A publicly accessible URL (e.g., ngrok) for Twilio Media Streams
+  - The agent's phone number
+
+transport:
+  type: telephony
+  mode: twilio
+  config:
+    account_sid: "${TWILIO_ACCOUNT_SID}"
+    auth_token: "${TWILIO_AUTH_TOKEN}"
+    from_number: "${TWILIO_FROM_NUMBER}"
+    to_number: "${AGENT_PHONE_NUMBER}"
+    public_url: "${VOICECHECK_PUBLIC_URL}"
+    server_port: 8765
+    call_connect_timeout: 30.0
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+turns:
+  - user: "Hello, is anyone there?"
+    expect:
+      - type: latency
+        max_first_byte_ms: 5000
+      - type: turn_count
+        min_words: 2
+
+  - user: "I'd like to schedule an appointment please."
+    expect:
+      - type: latency
+        max_first_byte_ms: 5000
+      - type: turn_count
+        min_words: 3
+
+settings:
+  turn_timeout: 30.0
+  silence_threshold: 2.5

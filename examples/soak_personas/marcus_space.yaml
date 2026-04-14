@@ -1,0 +1,78 @@
+name: "Marcus - Space explorer"
+description: >
+  A 10-year-old analytical kid who loves space and science.
+  Tests educational accuracy and age-appropriate explanations.
+
+  Default mode: sends fixed science questions with increasing depth.
+  Auto mode (--auto): LLM persona plays Marcus dynamically.
+
+transport:
+  type: livekit
+  mode: token_server
+  config:
+    token_url: "${TOKEN_SERVER_URL}/token"
+    token_request:
+      kid_id: "${TEST_KID_ID}"
+      agent_id: "${TEST_AGENT_ID}"
+    token_headers:
+      Authorization: "Bearer ${FIREBASE_TEST_TOKEN}"
+    response_mapping:
+      url_field: "server_url"
+      token_field: "participant_token"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+# ── Default mode: fixed questions ─────────────────────────────
+# Progressively deeper science questions to test educational accuracy.
+questions:
+  - "Hey, I've been reading about black holes. What actually happens inside one?"
+  - "But if nothing can escape, how do scientists even know they exist?"
+  - "Cool! So what about Mars? Is there actually water there?"
+  - "Could we ever live on Mars? Like, what would we need?"
+  - "Why do planets orbit the sun instead of just flying away?"
+  - "Wow, gravity is amazing. Thanks for explaining all that!"
+
+# ── Auto mode (--auto): LLM persona ──────────────────────────
+persona:
+  name: "Marcus"
+  age: 10
+  personality: "analytical, science-focused, precise, asks detailed follow-ups"
+  communication_style: "uses bigger vocabulary for his age, asks 'why' and 'how' a lot, wants specifics not vague answers"
+  goals:
+    - "Learn about black holes and how they form"
+    - "Understand why planets orbit the sun"
+    - "Find out if there's water on Mars"
+  topics:
+    - "black holes"
+    - "the solar system"
+    - "Mars exploration"
+    - "gravity"
+  instructions: >
+    Start by asking about black holes. Push for detailed answers — if the agent
+    gives a simple explanation, ask for more depth. Transition to Mars after a
+    couple of turns. Be impressed when the agent teaches you something new.
+  model: gpt-4o-mini
+  max_turns: 6
+  opening: "Hey, I've been reading about black holes. What actually happens inside one?"
+
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 5000
+  - type: turn_count
+    min_words: 5
+
+conversation_eval:
+  criteria:
+    - "Agent provided scientifically accurate information appropriate for a 10-year-old"
+    - "Agent explained complex concepts without dumbing them down too much"
+    - "Agent encouraged curiosity and follow-up questions"
+    - "Responses were engaging and conversational, not lecture-like"
+  min_score: 0.7
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 15.0
+  silence_threshold: 1.5

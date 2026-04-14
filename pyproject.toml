@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "voicecheck"
+version = "0.1.0"
+description = "E2E testing framework for voice agents — tests the full audio loop"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = ["voice", "agent", "testing", "livekit", "vapi", "retell", "pipecat", "daily", "telephony", "e2e", "quality"]
+authors = [{ name = "VoiceCheck Contributors" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Typing :: Typed",
+]
+dependencies = [
+    "click>=8.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+livekit = ["livekit>=1.0.0", "livekit-api>=1.0.0"]
+daily = ["daily-python>=0.10.0"]
+vapi = ["websockets>=12.0", "httpx>=0.27"]
+retell = ["websockets>=12.0", "httpx>=0.27"]
+telephony = ["twilio>=9.0", "aiohttp>=3.9"]
+tts = ["edge-tts>=6.1", "pydub>=0.25"]
+stt = ["faster-whisper>=1.0"]
+llm = ["openai>=1.0", "anthropic>=0.30"]
+dashboard = ["fastapi>=0.111", "uvicorn[standard]>=0.29", "jinja2>=3.1"]
+all = ["voicecheck[livekit,daily,vapi,retell,telephony,tts,stt,llm,dashboard]"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.4", "httpx>=0.27"]
+
+# [project.urls]
+# Uncomment and update when the repo is published:
+# Homepage = "https://github.com/YOUR_ORG/voicecheck"
+# Repository = "https://github.com/YOUR_ORG/voicecheck"
+# Issues = "https://github.com/YOUR_ORG/voicecheck/issues"
+
+[project.scripts]
+voicecheck = "voicecheck.cli:main"
+
+[project.entry-points.pytest11]
+voicecheck = "voicecheck.pytest_plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/voicecheck"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["voicecheck"]

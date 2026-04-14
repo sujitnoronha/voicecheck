@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}VoiceCheck — Scenarios{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Scenarios</h1>
+    <p class="page-subtitle">Voice agent E2E test results</p>
+  </div>
+</div>
+
+<div id="scenarios-grid" class="grid">
+  <div class="loading"><div class="spinner"></div><br>Loading scenarios...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function() {
+  const grid = document.getElementById('scenarios-grid');
+
+  try {
+    const scenarios = await VC.fetchAPI('/api/scenarios');
+
+    if (!scenarios.length) {
+      grid.innerHTML = '<div class="empty">No test results yet. Run <code>voicecheck run</code> to generate data.</div>';
+      return;
+    }
+
+    grid.innerHTML = '';
+
+    for (const s of scenarios) {
+      const passRate = s.run_count ? (s.pass_count / s.run_count * 100) : 0;
+      const rateClass = VC.rateClass(passRate);
+      const latClass = VC.latencyClass(s.avg_latency);
+      const chartId = 'chart_' + s.scenario_name.replace(/[^a-zA-Z0-9]/g, '_');
+
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.onclick = () => VC.go('/scenario/' + encodeURIComponent(s.scenario_name));
+
+      card.innerHTML = `
+        <h2>${VC.esc(s.scenario_name)}</h2>
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-value ${rateClass}">${passRate.toFixed(0)}%</div>
+            <div class="stat-label">Pass Rate</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value ${latClass}">${Math.round(s.avg_latency || 0)}<span style="font-size:0.7em">ms</span></div>
+            <div class="stat-label">Avg Latency</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">${s.run_count}</div>
+            <div class="stat-label">Runs</div>
+          </div>
+        </div>
+        <div class="stats" style="margin-top: 0;">
+          <div class="stat">
+            <div class="stat-value" style="font-size:1.1rem;">${VC.formatMs(s.p50_first_byte_ms)}</div>
+            <div class="stat-label">P50</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" style="font-size:1.1rem;">${VC.formatMs(s.p95_first_byte_ms)}</div>
+            <div class="stat-label">P95</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value" style="font-size:1.1rem;">${VC.formatMs(s.p99_first_byte_ms)}</div>
+            <div class="stat-label">P99</div>
+          </div>
+        </div>
+        <div id="timeline_${chartId}" class="timeline"></div>
+        <div class="chart-container"><canvas id="${chartId}"></canvas></div>
+      `;
+
+      grid.appendChild(card);
+
+      // Fetch history and render timeline + chart
+      const history = await VC.fetchAPI('/api/scenarios/' + encodeURIComponent(s.scenario_name) + '/history');
+      document.getElementById('timeline_' + chartId).innerHTML = VC.renderTimeline(history);
+      VC.createTrendChart(chartId, history);
+    }
+  } catch (err) {
+    grid.innerHTML = `<div class="empty">Error loading scenarios: ${VC.esc(err.message)}</div>`;
+  }
+})();
+</script>
+{% endblock %}

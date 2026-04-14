@@ -1,0 +1,76 @@
+name: "Sofia - Shy and quiet"
+description: >
+  A shy 5-year-old who gives minimal responses.
+  Tests the agent's patience, encouragement, and gentle engagement.
+
+  Default mode: sends fixed questions simulating a shy child.
+  Auto mode (--auto): LLM persona plays Sofia dynamically.
+
+transport:
+  type: livekit
+  mode: token_server
+  config:
+    token_url: "${TOKEN_SERVER_URL}/token"
+    token_request:
+      kid_id: "${TEST_KID_ID}"
+      agent_id: "${TEST_AGENT_ID}"
+    token_headers:
+      Authorization: "Bearer ${FIREBASE_TEST_TOKEN}"
+    response_mapping:
+      url_field: "server_url"
+      token_field: "participant_token"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+# ── Default mode: fixed questions ─────────────────────────────
+# Short, shy responses that test the agent's patience and warmth.
+questions:
+  - "...hi."
+  - "I dunno."
+  - "Um... butterflies?"
+  - "They're pretty. I like the blue ones."
+  - "Can you tell me about butterflies?"
+
+# ── Auto mode (--auto): LLM persona ──────────────────────────
+persona:
+  name: "Sofia"
+  age: 5
+  personality: "shy, quiet, warming up slowly, likes butterflies and drawing"
+  communication_style: "very short answers, one to three words at first, slowly opens up, whispers sometimes, says 'I dunno' a lot"
+  goals:
+    - "See if the agent can draw Sofia out of her shell"
+    - "Eventually talk about butterflies"
+  topics:
+    - "butterflies"
+    - "drawing"
+    - "colors"
+  instructions: >
+    Start very shy — give one-word answers or say "I dunno." If the agent is
+    patient and gentle, slowly open up a tiny bit. By the end, say a full
+    sentence about butterflies. Never become fully chatty.
+  model: gpt-4o-mini
+  max_turns: 5
+  opening: "...hi."
+
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 5000
+  - type: turn_count
+    min_words: 3
+
+conversation_eval:
+  criteria:
+    - "Agent was patient and did not pressure Sofia to talk more"
+    - "Agent used gentle, encouraging language appropriate for a shy 5-year-old"
+    - "Agent offered simple choices or topics rather than open-ended questions"
+    - "Agent did not overwhelm with long responses"
+    - "Agent maintained warmth even when getting minimal responses"
+  min_score: 0.7
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 20.0
+  silence_threshold: 2.0

@@ -1,0 +1,79 @@
+name: "Aisha - Homework helper"
+description: >
+  A studious 9-year-old who needs help understanding fractions.
+  Tests scaffolded explanations, handling confusion, and teaching patience.
+
+  Default mode: sends fixed questions that simulate a learning progression.
+  Auto mode (--auto): LLM persona plays Aisha dynamically.
+
+transport:
+  type: livekit
+  mode: token_server
+  config:
+    token_url: "${TOKEN_SERVER_URL}/token"
+    token_request:
+      kid_id: "${TEST_KID_ID}"
+      agent_id: "${TEST_AGENT_ID}"
+    token_headers:
+      Authorization: "Bearer ${FIREBASE_TEST_TOKEN}"
+    response_mapping:
+      url_field: "server_url"
+      token_field: "participant_token"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+# ── Default mode: fixed questions ─────────────────────────────
+# Learning progression: confusion → understanding → practice.
+questions:
+  - "Hi, can you help me with my math homework? We're learning about fractions and I'm kinda confused."
+  - "What even is a fraction? Like, I don't get what the numbers mean."
+  - "Oh okay... so like, if I have a pizza with 4 slices and I eat 1, that's one fourth?"
+  - "That makes sense! But how do I add fractions? Like what's one fourth plus one fourth?"
+  - "So it's two fourths? Is that the same as one half?"
+  - "I think I get it now! Thank you so much for helping me!"
+
+# ── Auto mode (--auto): LLM persona ──────────────────────────
+persona:
+  name: "Aisha"
+  age: 9
+  personality: "studious, wants to understand, gets frustrated when confused, very polite"
+  communication_style: "asks clear questions, says 'I don't get it' when confused, uses 'please' and 'thank you', tries to repeat back what she learned"
+  goals:
+    - "Understand what fractions mean"
+    - "Learn how to add simple fractions like 1/4 + 1/4"
+    - "Feel confident enough to try a problem on her own"
+  topics:
+    - "fractions"
+    - "math homework"
+    - "adding fractions"
+  instructions: >
+    Start by saying you have math homework about fractions. Ask what a fraction
+    is. If the explanation is too abstract, say you don't get it and ask for a
+    real-world example. Once you understand the basics, ask how to add 1/4 + 1/4.
+    Try to repeat back what you learned. Thank the agent at the end.
+  model: gpt-4o-mini
+  max_turns: 6
+  opening: "Hi, can you help me with my math homework? We're learning about fractions and I'm kinda confused."
+
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 5000
+  - type: turn_count
+    min_words: 5
+
+conversation_eval:
+  criteria:
+    - "Agent used concrete examples (pizza slices, pie pieces, etc.) to explain fractions"
+    - "Agent scaffolded explanations — building from simple to more complex"
+    - "Agent checked for understanding before moving to the next concept"
+    - "Agent was encouraging when Aisha expressed confusion"
+    - "Agent did not just give the answer — it guided Aisha to understand"
+  min_score: 0.7
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 15.0
+  silence_threshold: 1.5

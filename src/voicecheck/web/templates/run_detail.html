@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}VoiceCheck — Run Detail{% endblock %}
+
+{% block content %}
+<div id="run-content">
+  <div class="loading"><div class="spinner"></div><br>Loading run details...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function() {
+  const runId = {{ run_id | tojson }};
+  const container = document.getElementById('run-content');
+
+  try {
+    const run = await VC.fetchAPI('/api/runs/' + runId);
+    const tags = run.tags || [];
+    const tagsHtml = tags.map(t => `<span class="tag">${VC.esc(t)}</span>`).join(' ');
+
+    // Compute averages from turns
+    const fbs = run.turns.filter(t => t.first_byte_ms > 0).map(t => t.first_byte_ms);
+    const tots = run.turns.filter(t => t.total_ms > 0).map(t => t.total_ms);
+    const avgFb = fbs.length ? fbs.reduce((a, b) => a + b, 0) / fbs.length : 0;
+    const avgTotal = tots.length ? tots.reduce((a, b) => a + b, 0) / tots.length : 0;
+
+    let html = `
+      <div class="page-header">
+        <div>
+          <h1>${VC.esc(run.scenario_name)}</h1>
+          <p class="page-subtitle">Run ${run.id.slice(0, 8)} &middot; ${VC.formatDate(run.created_at)}</p>
+        </div>
+        <div>
+          <a href="/scenario/${encodeURIComponent(run.scenario_name)}" class="btn btn-ghost" style="margin-right:0.5rem;">All Runs</a>
+          <button class="btn btn-danger" id="btn-delete">Delete</button>
+        </div>
+      </div>
+
+      <div class="run-header">
+        <div style="display:flex;align-items:center;gap:1rem;">
+          ${VC.badge(run.passed)}
+          ${tagsHtml}
+        </div>
+        <div class="run-meta">
+          <div class="run-meta-item">
+            <span class="label">Turns</span>
+            <span class="value">${run.passed_turns}/${run.total_turns}</span>
+          </div>
+          <div class="run-meta-item">
+            <span class="label">Avg First Byte</span>
+            <span class="value ${VC.latencyClass(avgFb)}">${VC.formatMs(avgFb)}</span>
+          </div>
+          <div class="run-meta-item">
+            <span class="label">Avg Total</span>
+            <span class="value ${VC.latencyClass(avgTotal)}">${VC.formatMs(avgTotal)}</span>
+          </div>
+          <div class="run-meta-item">
+            <span class="label">Transport</span>
+            <span class="value">${VC.esc(run.transport_type || 'N/A')}</span>
+          </div>
+        </div>
+      </div>
+
+      <h2 style="margin:1.5rem 0 1rem;">Conversation</h2>
+    `;
+
+    // Render each turn
+    for (const turn of run.turns) {
+      const evals = turn.evaluations || [];
+      let evalsHtml = '';
+      for (const ev of evals) {
+        const cls = ev.passed ? 'eval-pass' : 'eval-fail';
+        evalsHtml += `
+          <div style="margin-bottom:0.4rem;">
+            <span class="eval-badge ${cls}">${VC.esc(ev.type)}: ${(ev.score || 0).toFixed(2)}</span>
+            <span style="font-size:0.8rem;color:var(--text-muted);">${VC.esc(ev.reason)}</span>
+          </div>`;
+      }
+
+      html += `
+        <div class="turn-card">
+          <div class="turn-header">
+            <span class="turn-number">Turn ${turn.turn_index + 1}</span>
+            ${VC.badge(turn.passed)}
+          </div>
+          <div class="turn-text">
+            <span class="speaker speaker-user">User:</span>${VC.esc(turn.user_text)}
+          </div>
+          <div class="turn-text">
+            <span class="speaker speaker-agent">Agent:</span>${VC.esc(turn.agent_text || '(no response)')}
+          </div>
+          <div class="turn-metrics">
+            <span>First byte: <strong class="${VC.latencyClass(turn.first_byte_ms)}">${VC.formatMs(turn.first_byte_ms)}</strong></span>
+            <span>Total: <strong class="${VC.latencyClass(turn.total_ms)}">${VC.formatMs(turn.total_ms)}</strong></span>
+          </div>
+          ${evals.length ? '<div class="turn-evals">' + evalsHtml + '</div>' : ''}
+        </div>
+      `;
+    }
+
+    // Conversation evaluation (persona mode)
+    if (run.conversation_eval) {
+      const ce = run.conversation_eval;
+      html += `
+        <div class="conv-eval">
+          <h3>Conversation Evaluation ${VC.badge(ce.passed)}</h3>
+          <div style="margin-bottom:0.75rem;">
+            <span style="font-size:0.85rem;color:var(--text-muted);">Overall score:</span>
+            <strong class="${ce.score >= 0.7 ? 'pass' : 'fail'}" style="font-size:1.1rem;margin-left:0.5rem;">
+              ${(ce.score || 0).toFixed(2)}
+            </strong>
+          </div>
+      `;
+
+      if (ce.criteria_results) {
+        for (const cr of ce.criteria_results) {
+          const cls = cr.score >= 0.7 ? 'pass' : 'fail';
+          html += `
+            <div class="conv-eval-item">
+              <span class="${cls}" style="font-weight:600;">${(cr.score || 0).toFixed(2)}</span>
+              <span style="margin-left:0.75rem;">${VC.esc(cr.criteria)}</span>
+              ${cr.reason ? `<div style="color:var(--text-muted);font-size:0.8rem;margin-top:0.25rem;">${VC.esc(cr.reason)}</div>` : ''}
+            </div>`;
+        }
+      }
+
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+
+    // Delete handler
+    document.getElementById('btn-delete').onclick = async () => {
+      if (!confirm('Delete this run? This cannot be undone.')) return;
+      try {
+        await fetch('/api/runs/' + runId, { method: 'DELETE' });
+        VC.go('/scenario/' + encodeURIComponent(run.scenario_name));
+      } catch (err) {
+        alert('Delete failed: ' + err.message);
+      }
+    };
+
+  } catch (err) {
+    container.innerHTML = `<div class="empty">Error loading run: ${VC.esc(err.message)}</div>`;
+  }
+})();
+</script>
+{% endblock %}

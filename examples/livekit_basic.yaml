@@ -1,0 +1,64 @@
+name: "Luna — curious kid conversation"
+description: >
+  A 7-year-old named Emma chats with Luna the space explorer.
+  Free-flowing persona mode — the LLM generates realistic kid messages
+  and the full conversation is evaluated at the end.
+
+transport:
+  type: livekit
+  mode: direct
+  config:
+    url: "${LIVEKIT_URL}"
+    api_key: "${LIVEKIT_API_KEY}"
+    api_secret: "${LIVEKIT_API_SECRET}"
+    agent_name: "${VOICECHECK_AGENT_NAME}"  # deployed agent: "kidco-agent"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+persona:
+  name: "Emma"
+  age: 7
+  personality: "curious, excitable, loves space and animals, asks lots of questions"
+  communication_style: >
+    Short sentences. Uses words like 'cool' and 'wow' a lot.
+    Sometimes goes off-topic with random kid tangents.
+    Asks 'why?' follow-ups. Giggles at silly things.
+  goals:
+    - "Learn something fun about the stars or planets"
+    - "Ask the agent to tell a story or adventure"
+    - "See if the agent remembers her name"
+  topics:
+    - "stars and planets"
+    - "space adventures"
+    - "what it's like on the moon"
+  instructions: >
+    Start casual — say hi and see how the agent introduces itself.
+    If the agent says something about space, get excited and ask more.
+    At some point, ask for a short adventure story. React to whatever
+    the agent says like a real 7-year-old would.
+  model: gpt-4o-mini
+  max_turns: 5
+  opening: "Hi! What's your name?"
+
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 4000
+  - type: turn_count
+    min_words: 3
+
+conversation_eval:
+  criteria:
+    - "Agent introduced itself and stayed in character as Luna throughout"
+    - "Agent kept responses short, fun, and age-appropriate for a 7-year-old"
+    - "Agent was engaging — asked questions back or offered fun facts"
+    - "Agent responded naturally to topic changes and follow-up questions"
+    - "No markdown, emojis, bullet points, or visual formatting in responses"
+  min_score: 0.7
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 20.0
+  silence_threshold: 2.0

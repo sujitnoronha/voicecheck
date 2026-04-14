@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}VoiceCheck — Runs{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 id="page-title">{% if scenario_name %}{{ scenario_name }}{% else %}All Runs{% endif %}</h1>
+    <p class="page-subtitle" id="page-subtitle">Loading...</p>
+  </div>
+  {% if scenario_name %}
+  <a href="/runs" class="btn btn-ghost">View All Runs</a>
+  {% endif %}
+</div>
+
+<div class="filter-bar" id="filter-bar">
+  {% if not scenario_name %}
+  <select id="scenario-filter">
+    <option value="">All Scenarios</option>
+  </select>
+  {% endif %}
+</div>
+
+<div id="runs-content">
+  <div class="loading"><div class="spinner"></div><br>Loading runs...</div>
+</div>
+
+<div class="pagination" id="pagination" style="display:none;">
+  <button class="btn btn-ghost" id="btn-prev" disabled>Previous</button>
+  <span class="pagination-info" id="pagination-info"></span>
+  <button class="btn btn-ghost" id="btn-next">Next</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function() {
+  const scenarioName = {{ scenario_name | tojson }};
+  const PAGE_SIZE = 50;
+  let currentOffset = 0;
+  let currentScenario = scenarioName || '';
+
+  const content = document.getElementById('runs-content');
+  const pagination = document.getElementById('pagination');
+  const btnPrev = document.getElementById('btn-prev');
+  const btnNext = document.getElementById('btn-next');
+  const pageInfo = document.getElementById('pagination-info');
+  const subtitle = document.getElementById('page-subtitle');
+
+  // Populate scenario filter dropdown
+  if (!scenarioName) {
+    try {
+      const scenarios = await VC.fetchAPI('/api/scenarios');
+      const sel = document.getElementById('scenario-filter');
+      for (const s of scenarios) {
+        const opt = document.createElement('option');
+        opt.value = s.scenario_name;
+        opt.textContent = s.scenario_name;
+        sel.appendChild(opt);
+      }
+      sel.addEventListener('change', () => {
+        currentScenario = sel.value;
+        currentOffset = 0;
+        loadRuns();
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  async function loadRuns() {
+    content.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading runs...</div>';
+
+    try {
+      let url = `/api/runs?limit=${PAGE_SIZE}&offset=${currentOffset}`;
+      if (currentScenario) url += `&scenario=${encodeURIComponent(currentScenario)}`;
+
+      const data = await VC.fetchAPI(url);
+      const { runs, total } = data;
+
+      subtitle.textContent = `${total} total run${total !== 1 ? 's' : ''}`;
+
+      if (!runs.length) {
+        content.innerHTML = '<div class="empty">No runs found.</div>';
+        pagination.style.display = 'none';
+        return;
+      }
+
+      let html = `<div class="table-wrap"><table>
+        <thead><tr>
+          <th>ID</th>
+          <th>Scenario</th>
+          <th>Status</th>
+          <th>Turns</th>
+          <th>Avg First Byte</th>
+          <th>Avg Total</th>
+          <th>Tags</th>
+          <th>Date</th>
+        </tr></thead><tbody>`;
+
+      for (const r of runs) {
+        const tags = JSON.parse(r.tags || '[]');
+        const tagsHtml = tags.map(t => `<span class="tag">${VC.esc(t)}</span>`).join('');
+
+        html += `<tr onclick="VC.go('/run/${r.id}')">
+          <td><code>${r.id.slice(0, 8)}</code></td>
+          <td>${VC.esc(r.scenario_name)}</td>
+          <td>${VC.badge(r.passed)}</td>
+          <td>${r.passed_turns}/${r.total_turns}</td>
+          <td class="${VC.latencyClass(r.avg_first_byte_ms)}">${VC.formatMs(r.avg_first_byte_ms)}</td>
+          <td class="${VC.latencyClass(r.avg_total_ms)}">${VC.formatMs(r.avg_total_ms)}</td>
+          <td>${tagsHtml || '\u2014'}</td>
+          <td>${VC.formatDate(r.created_at)}</td>
+        </tr>`;
+      }
+
+      html += '</tbody></table></div>';
+      content.innerHTML = html;
+
+      // Pagination
+      const showing = Math.min(currentOffset + PAGE_SIZE, total);
+      pageInfo.textContent = `${currentOffset + 1}\u2013${showing} of ${total}`;
+      btnPrev.disabled = currentOffset === 0;
+      btnNext.disabled = currentOffset + PAGE_SIZE >= total;
+      pagination.style.display = total > PAGE_SIZE ? 'flex' : 'none';
+
+    } catch (err) {
+      content.innerHTML = `<div class="empty">Error: ${VC.esc(err.message)}</div>`;
+    }
+  }
+
+  btnPrev.onclick = () => { currentOffset = Math.max(0, currentOffset - PAGE_SIZE); loadRuns(); };
+  btnNext.onclick = () => { currentOffset += PAGE_SIZE; loadRuns(); };
+
+  loadRuns();
+})();
+</script>
+{% endblock %}

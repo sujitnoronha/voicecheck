@@ -1,0 +1,79 @@
+name: "Luna — guided adventure flow"
+description: >
+  A 7-year-old named Emma chats with Luna the space explorer through
+  a structured sequence of goals. Tests that the agent follows a
+  narrative arc: introduction → fun facts → storytelling → farewell.
+
+transport:
+  type: livekit
+  mode: direct
+  config:
+    url: "${LIVEKIT_URL}"
+    api_key: "${LIVEKIT_API_KEY}"
+    api_secret: "${LIVEKIT_API_SECRET}"
+    agent_name: "${VOICECHECK_AGENT_NAME}"  # deployed agent: "kidco-agent"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+persona:
+  name: "Emma"
+  age: 7
+  personality: "curious, excitable, loves space, asks lots of questions"
+  communication_style: >
+    Short sentences. Uses 'cool' and 'wow' a lot.
+    Asks 'why?' follow-ups. Gets excited easily.
+  model: gpt-4o-mini
+
+flow:
+  - name: "greeting"
+    goal: "Say hi and ask the agent what their name is"
+    expect:
+      - type: turn_count
+        min_words: 5
+
+  - name: "space-fact"
+    goal: "Ask the agent to tell you a fun fact about the moon"
+    expect:
+      - type: turn_count
+        min_words: 10
+      - type: keyword
+        must_contain_any: ["moon", "lunar", "crater", "space"]
+
+  - name: "follow-up"
+    goal: "React with excitement and ask a deeper follow-up question about what the agent just said"
+    expect:
+      - type: turn_count
+        min_words: 5
+
+  - name: "story-request"
+    goal: "Ask the agent to tell a short adventure story about going to space"
+    expect:
+      - type: turn_count
+        min_words: 15
+
+  - name: "farewell"
+    goal: "Thank the agent and say goodbye enthusiastically"
+    expect:
+      - type: turn_count
+        min_words: 3
+
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 4000
+
+conversation_eval:
+  criteria:
+    - "Agent introduced itself and stayed in character as Luna throughout"
+    - "Agent shared an age-appropriate and accurate space fact"
+    - "Agent responded naturally to excitement and follow-up questions"
+    - "Agent told an engaging, short adventure story when asked"
+    - "Agent kept responses concise — suitable for voice, not walls of text"
+  min_score: 0.7
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 20.0
+  silence_threshold: 2.0

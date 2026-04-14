@@ -1,0 +1,39 @@
+name: "Daily/Pipecat — basic voice agent test"
+description: >
+  Test a Pipecat-based voice agent running in a Daily room.
+  Uses the Daily transport to join a room, send audio, and evaluate the agent's response.
+
+transport:
+  type: daily
+  mode: api_key
+  config:
+    api_key: "${DAILY_API_KEY}"
+    room_name: "voicecheck-test"
+    agent_connect_timeout: 15.0
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+turns:
+  - user: "Hello, who are you?"
+    expect:
+      - type: latency
+        max_first_byte_ms: 4000
+      - type: turn_count
+        min_words: 3
+      - type: keyword
+        required: []
+        forbidden: ["error", "exception"]
+
+  - user: "Tell me something interesting about yourself."
+    expect:
+      - type: latency
+        max_first_byte_ms: 4000
+      - type: turn_count
+        min_words: 5
+
+settings:
+  turn_timeout: 20.0
+  silence_threshold: 2.0

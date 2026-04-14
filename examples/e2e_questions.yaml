@@ -1,0 +1,49 @@
+name: "E2E — Fixed questions"
+description: >
+  Send a fixed set of questions to the agent via token server.
+  Deterministic inputs make results reproducible across runs.
+  No OpenAI key needed (unless conversation_eval is enabled).
+
+transport:
+  type: livekit
+  mode: token_server
+  config:
+    token_url: "${TOKEN_SERVER_URL}/token"
+    token_request:
+      kid_id: "${TEST_KID_ID}"
+      agent_id: "${TEST_AGENT_ID}"
+    token_headers:
+      Authorization: "Bearer ${FIREBASE_TEST_TOKEN}"
+    response_mapping:
+      url_field: "server_url"
+      token_field: "participant_token"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+questions:
+  - "Hi there, my name is Emma!"
+  - "Can you tell me something fun about butterflies?"
+  - "What's your favorite color?"
+  - "Can you tell me a short story about a brave kitten?"
+
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 5000
+  - type: turn_count
+    min_words: 5
+
+conversation_eval:
+  criteria:
+    - "Agent greeted the child warmly and used their name"
+    - "Agent gave age-appropriate, engaging responses"
+    - "Agent responses were concise enough for voice conversation"
+    - "Agent maintained a friendly, encouraging tone throughout"
+  min_score: 0.7
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 20.0
+  silence_threshold: 2.0

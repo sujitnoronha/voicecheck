@@ -1,0 +1,67 @@
+name: "E2E — Persona conversation"
+description: >
+  LLM-driven child persona has a free-flowing conversation with the agent
+  via token server. Each run is unique — the persona adapts based on agent
+  responses. Requires OPENAI_API_KEY for persona generation + conversation eval.
+
+transport:
+  type: livekit
+  mode: token_server
+  config:
+    token_url: "${TOKEN_SERVER_URL}/token"
+    token_request:
+      kid_id: "${TEST_KID_ID}"
+      agent_id: "${TEST_AGENT_ID}"
+    token_headers:
+      Authorization: "Bearer ${FIREBASE_TEST_TOKEN}"
+    response_mapping:
+      url_field: "server_url"
+      token_field: "participant_token"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+persona:
+  name: "Emma"
+  age: 7
+  personality: "curious, friendly, loves animals and stories, gets excited easily"
+  communication_style: "short sentences, uses 'wow' and 'cool' a lot, asks follow-up questions"
+  goals:
+    - "Have a fun conversation about animals"
+    - "Ask the agent to tell a short story"
+    - "Say goodbye politely at the end"
+  topics:
+    - "butterflies"
+    - "kittens"
+    - "favorite colors"
+    - "bedtime stories"
+  instructions: >
+    Start by saying hi and your name. Be enthusiastic and curious. Ask about
+    animals or colors. If the agent says something interesting, say "wow" or
+    "that's so cool" and ask a follow-up. After a few turns, ask the agent
+    to tell you a short story. End by saying thank you and bye.
+  model: gpt-4o-mini
+  max_turns: 5
+  opening: "Hi! My name is Emma and I'm seven years old!"
+
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 5000
+  - type: turn_count
+    min_words: 5
+
+conversation_eval:
+  criteria:
+    - "Agent greeted the child warmly and used their name"
+    - "Agent gave age-appropriate, engaging responses"
+    - "Agent responded naturally to the child's enthusiasm and follow-up questions"
+    - "Agent responses were concise — suitable for voice, not walls of text"
+    - "Agent maintained a friendly, encouraging tone throughout"
+  min_score: 0.7
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 20.0
+  silence_threshold: 2.0
