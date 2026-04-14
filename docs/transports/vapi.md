@@ -133,13 +133,12 @@ transport:
 
 turns:
   - user: "I need to cancel my subscription."
-    evaluators:
+    expect:
       - type: latency
-        config:
-          max_first_byte_ms: 3000
-      - type: semantic
-        config:
-          expected: "The agent should acknowledge the cancellation request and ask for account details."
+        max_first_byte_ms: 3000
+      - type: llm_judge
+        criteria: "The agent should acknowledge the cancellation request and ask for account details."
+        min_score: 0.7
 ```
 
 ## Troubleshooting

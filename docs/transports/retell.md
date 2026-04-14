@@ -99,13 +99,12 @@ transport:
 
 turns:
   - user: "I'd like to book an appointment for next Monday."
-    evaluators:
+    expect:
       - type: latency
-        config:
-          max_first_byte_ms: 3000
-      - type: semantic
-        config:
-          expected: "The agent should confirm the appointment date and ask for a preferred time."
+        max_first_byte_ms: 3000
+      - type: llm_judge
+        criteria: "The agent should confirm the appointment date and ask for a preferred time."
+        min_score: 0.7
 ```
 
 ## Troubleshooting

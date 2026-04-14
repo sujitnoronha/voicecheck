@@ -172,13 +172,12 @@ transport:
 
 turns:
   - user: "Hello, I need help with my account."
-    evaluators:
+    expect:
       - type: latency
-        config:
-          max_first_byte_ms: 2000
-      - type: semantic
-        config:
-          expected: "The agent should greet the user and offer assistance."
+        max_first_byte_ms: 2000
+      - type: llm_judge
+        criteria: "The agent should greet the user and offer assistance."
+        min_score: 0.7
 ```
 
 ## Troubleshooting

@@ -122,11 +122,16 @@ audio:
   stt_provider: whisper
   sample_rate: 16000
   channels: 1
+  language: "es"             # auto-selects TTS voice + STT language
+  degradation:               # simulate real-world audio conditions
+    noise_snr_db: 15
+    bandwidth: narrowband
+    packet_loss_pct: 5
+    codec: mulaw
   tts_kwargs:
     voice: "en-US-AriaNeural"
   stt_kwargs:
     model_size: "small"
-    language: "en"
 ```
 
 | Field | Type | Default | Description |
@@ -135,8 +140,48 @@ audio:
 | `stt_provider` | string | `"whisper"` | Speech-to-text provider. Available: `whisper`, `openai`. |
 | `sample_rate` | int | `16000` | Audio sample rate in Hz. |
 | `channels` | int | `1` | Number of audio channels. |
+| `language` | string | `""` | Language code (e.g., `"es"`, `"fr"`, `"ja"`). Sets TTS voice and STT language automatically. See [supported languages](#supported-languages). |
+| `degradation` | DegradationConfig | `null` | Audio degradation settings. Applied to user audio after TTS, before sending. See [DegradationConfig](#degradationconfig). |
 | `tts_kwargs` | dict | `{}` | Extra keyword arguments passed to the TTS provider constructor. |
 | `stt_kwargs` | dict | `{}` | Extra keyword arguments passed to the STT provider constructor. |
+
+### Supported languages
+
+When `language` is set, VoiceCheck auto-selects the appropriate Edge TTS voice and configures STT. Supported codes:
+
+| Code | Language | Edge TTS Voice |
+|---|---|---|
+| `en` | English | en-US-JennyNeural |
+| `es` | Spanish | es-ES-ElviraNeural |
+| `fr` | French | fr-FR-DeniseNeural |
+| `de` | German | de-DE-KatjaNeural |
+| `pt` | Portuguese | pt-BR-FranciscaNeural |
+| `ja` | Japanese | ja-JP-NanamiNeural |
+| `ko` | Korean | ko-KR-SunHiNeural |
+| `zh` | Chinese | zh-CN-XiaoxiaoNeural |
+| `it` | Italian | it-IT-ElsaNeural |
+| `hi` | Hindi | hi-IN-SwaraNeural |
+| `ar` | Arabic | ar-SA-ZariyahNeural |
+| `ru` | Russian | ru-RU-SvetlanaNeural |
+| `nl` | Dutch | nl-NL-ColetteNeural |
+| `pl` | Polish | pl-PL-AgnieszkaNeural |
+| `sv` | Swedish | sv-SE-SofieNeural |
+| `tr` | Turkish | tr-TR-EmelNeural |
+| `th` | Thai | th-TH-PremwadeeNeural |
+| `vi` | Vietnamese | vi-VN-HoaiMyNeural |
+
+If `voice` is also specified in `tts_kwargs`, it takes precedence over the language mapping.
+
+### DegradationConfig
+
+Simulate real-world audio conditions. Effects are chained in order: noise --> bandwidth --> codec --> packet loss.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `noise_snr_db` | float | `null` | Add Gaussian noise at this signal-to-noise ratio (dB). Lower = noisier. 20 = light, 10 = noisy, 5 = very noisy. |
+| `bandwidth` | string | `null` | `"narrowband"` (3400 Hz cutoff, telephony) or `"wideband"` (7000 Hz). |
+| `packet_loss_pct` | float | `null` | Percentage of audio frames to zero out (0-100). Simulates network packet loss. |
+| `codec` | string | `null` | `"mulaw"` for G.711 mu-law codec round-trip. Introduces telephony quantization artifacts. |
 
 ### TTS provider options
 
@@ -192,18 +237,59 @@ OpenAI Whisper API. Requires `OPENAI_API_KEY`.
 
 ```yaml
 turns:
+  # Standard speech turn
   - user: "Hello, who are you?"
     expect:
       - type: latency
         max_first_byte_ms: 3000
+
+  # Silence turn — test how agent handles no input
+  - silence:
+      duration_s: 10
+    expect:
+      - type: turn_count
+        min_words: 1
+
+  # Turn with pre-pause
+  - user: "Sorry, I'm back"
+    pause_before_ms: 3000
+
+  # Turn with mid-response interruption
+  - user: "Tell me a long story"
+    interrupt:
+      after_ms: 2000
+      with: "Wait, stop. Tell me about Mars instead."
+    expect:
       - type: keyword
-        must_contain: ["hello"]
+        must_contain: ["mars"]
 ```
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `user` | string | **(required)** | Text to synthesize and send as user speech. |
+| `user` | string | `""` | Text to synthesize and send as user speech. Empty when using `silence`. |
 | `expect` | list of ExpectConfig | `[]` | Evaluators to run on this turn's agent response. |
+| `silence` | SilenceConfig | `null` | Send silence instead of speech. Mutually exclusive with `user`. |
+| `pause_before_ms` | int | `0` | Milliseconds to wait before this turn starts. Simulates user thinking time. |
+| `interrupt` | InterruptConfig | `null` | Interrupt the agent mid-response. See below. |
+
+### SilenceConfig
+
+Send silent audio frames instead of synthesized speech. Tests how the agent handles extended user silence (e.g., prompting, timeout behavior).
+
+| Field | Type | Description |
+|---|---|---|
+| `duration_s` | float | Duration of silence in seconds. |
+
+### InterruptConfig
+
+Send additional audio while the agent is still responding, simulating user barge-in. VoiceCheck starts receiving agent audio, waits `after_ms`, then synthesizes and sends the interrupt text.
+
+| Field | Type | Description |
+|---|---|---|
+| `after_ms` | int | Milliseconds after agent starts responding before sending the interrupt. |
+| `with` | string | Text to synthesize and send as the interrupting speech. |
+
+The `turn_metadata` field on `EvalContext` is populated with `{"interrupted": true, "interrupt_after_ms": N, "interrupt_text": "..."}` so custom evaluators can detect interruption context.
 
 ---
 
@@ -253,6 +339,18 @@ The `model_config = {"extra": "allow"}` setting on this Pydantic model means any
 | `min_score` | float | `0.7` |
 | `provider` | string | `"openai"` |
 | `model` | string | provider default |
+
+### emotional_tone parameters
+
+| Field | Type | Default |
+|---|---|---|
+| `expected_emotions` | list of strings | `[]` |
+| `forbidden_emotions` | list of strings | `[]` |
+| `min_score` | float | `0.7` |
+| `provider` | string | `"openai"` |
+| `model` | string | provider default |
+
+Scores how well the agent's emotional tone matches expectations. Detects emotions like `"empathetic"`, `"warm"`, `"dismissive"`, `"cold"`, etc. Skipped with `--skip-llm-judge`.
 
 ---
 

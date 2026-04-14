@@ -62,7 +62,6 @@ def _ensure_registrations() -> None:
         "voicecheck.transports.daily",
         "voicecheck.transports.vapi",
         "voicecheck.transports.retell",
-        "voicecheck.transports.telephony",
     ):
         try:
             __import__(_transport_mod)

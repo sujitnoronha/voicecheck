@@ -177,13 +177,11 @@ class TestTransportRegistration:
         import voicecheck.transports.daily  # noqa: F401
         import voicecheck.transports.vapi  # noqa: F401
         import voicecheck.transports.retell  # noqa: F401
-        import voicecheck.transports.telephony  # noqa: F401
 
         assert "livekit" in _TRANSPORT_REGISTRY
         assert "daily" in _TRANSPORT_REGISTRY
         assert "vapi" in _TRANSPORT_REGISTRY
         assert "retell" in _TRANSPORT_REGISTRY
-        assert "telephony" in _TRANSPORT_REGISTRY
 
     def test_transport_subclass(self) -> None:
         from voicecheck.core.transport import Transport, get_transport
@@ -192,8 +190,7 @@ class TestTransportRegistration:
         import voicecheck.transports.daily  # noqa: F401
         import voicecheck.transports.vapi  # noqa: F401
         import voicecheck.transports.retell  # noqa: F401
-        import voicecheck.transports.telephony  # noqa: F401
 
-        for name in ("livekit", "daily", "vapi", "retell", "telephony"):
+        for name in ("livekit", "daily", "vapi", "retell"):
             cls = get_transport(name)
             assert issubclass(cls, Transport), f"{name} is not a Transport subclass"

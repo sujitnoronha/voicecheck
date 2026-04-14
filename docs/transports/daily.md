@@ -134,13 +134,12 @@ transport:
 
 turns:
   - user: "Hi, what can you help me with?"
-    evaluators:
+    expect:
       - type: latency
-        config:
-          max_first_byte_ms: 2500
-      - type: semantic
-        config:
-          expected: "The agent should introduce itself and describe its capabilities."
+        max_first_byte_ms: 2500
+      - type: llm_judge
+        criteria: "The agent should introduce itself and describe its capabilities."
+        min_score: 0.7
 ```
 
 ## Troubleshooting

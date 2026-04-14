@@ -40,6 +40,7 @@ voicecheck run [OPTIONS] PATH
 | `--skip-llm-judge` | flag | off | Skip all `llm_judge` evaluators and `conversation_eval`. Saves API cost. |
 | `-q`, `--questions TEXT` | string | *(repeatable)* | Override scenario questions from the CLI. Can be specified multiple times. Overrides `persona` and `turns` in the YAML. |
 | `--auto` | flag | off | Use LLM persona mode instead of questions mode. Requires `OPENAI_API_KEY`. |
+| `--concurrent N` | int | `1` | Run N simultaneous sessions of the same scenario (load testing). Reports aggregate pass rate, latency percentiles (p50/p95/p99), and throughput. |
 
 ### Examples
 
@@ -76,6 +77,12 @@ voicecheck run scenario.yaml --auto
 
 # Cost-optimized run (no LLM calls)
 voicecheck run scenario.yaml --skip-llm-judge
+
+# Load test: 10 concurrent sessions
+voicecheck run scenario.yaml --concurrent 10
+
+# Sustained load: 20 concurrent sessions for 5 minutes
+voicecheck run scenario.yaml --concurrent 20 --duration 5m
 ```
 
 ### Exit codes

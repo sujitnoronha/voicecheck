@@ -215,9 +215,52 @@ Each `llm_judge` evaluation makes one LLM API call. For cost optimization:
 #### Skipping LLM judge
 
 ```bash
-# Skip all llm_judge evaluators (and conversation_eval)
+# Skip all llm_judge evaluators, emotional_tone, and conversation_eval
 voicecheck run scenario.yaml --skip-llm-judge
 ```
+
+---
+
+## emotional_tone
+
+Evaluates the emotional quality of the agent's response using an LLM. Checks detected emotions against expected and forbidden lists.
+
+```yaml
+expect:
+  - type: emotional_tone
+    expected_emotions: ["empathetic", "warm", "supportive"]
+    forbidden_emotions: ["dismissive", "cold", "sarcastic"]
+    min_score: 0.7
+```
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `expected_emotions` | list of strings | `[]` | Emotions the agent should exhibit. |
+| `forbidden_emotions` | list of strings | `[]` | Emotions the agent must not exhibit. |
+| `min_score` | float | `0.7` | Minimum score (0.0-1.0) to pass. |
+| `provider` | string | `"openai"` | LLM provider: `"openai"` or `"anthropic"`. |
+| `model` | string | provider default | Model to use for evaluation. |
+
+#### How it works
+
+The LLM analyzes the agent's response for emotional qualities and returns:
+- `detected_emotions`: What emotions were found in the response
+- `expected_present`: Which expected emotions were detected
+- `expected_missing`: Which expected emotions were absent
+- `forbidden_present`: Which forbidden emotions were detected
+
+Scoring: 1.0 = all expected present, no forbidden. 0.0 = forbidden emotions dominant.
+
+#### Use cases
+
+- Customer support: ensure empathy and patience
+- Healthcare: verify warm, supportive tone
+- Education: check for encouragement and clarity
+- Red teaming: detect if agent becomes dismissive under pressure
+
+Skipped with `--skip-llm-judge`.
 
 ---
 
