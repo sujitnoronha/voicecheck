@@ -1,27 +1,57 @@
 # VoiceCheck
 
-**The open-source E2E testing framework for voice agents** — test the full audio loop across any provider.
+**Cypress for voice agents.** Write YAML scenarios, send real audio, get real latency numbers. Open source.
 
 ```
-Your text ──► TTS ──► Audio ──► Transport ──► Agent ──► Audio ──► STT ──► Evaluate
-                                   │
-                       LiveKit / Daily / VAPI / Retell
+  "Hello, how are you?"
+        │
+        ▼
+    ┌───────┐    ┌───────────┐    ┌───────┐    ┌──────────┐
+    │  TTS  │───►│ Transport │───►│ Agent │───►│ Evaluate │
+    └───────┘    └───────────┘    └───────┘    └──────────┘
+                       │                             │
+          LiveKit / Daily / VAPI / Retell      Latency? ✓
+                                               Keywords? ✓
+                                               Tone? ✓
+                                               LLM Judge? ✓
 ```
+
+Most voice agent testing is "call it and vibes-check the response." VoiceCheck sends real audio through real transports and measures what actually happens: first-byte latency, turn-taking behavior, silence handling, emotional tone, multi-language quality, and agent behavior under noise/packet loss.
+
+**One YAML file. Real audio. Real numbers.**
+
+```yaml
+turns:
+  - user: "Hi, can you help me book a flight?"
+    expect:
+      - type: latency
+        max_first_byte_ms: 2000
+      - type: emotional_tone
+        expected_emotions: ["helpful", "friendly"]
+      - type: llm_judge
+        criteria: "Agent acknowledges the request and asks for details"
+```
+
+```bash
+$ voicecheck run booking_test.yaml
+
+  VoiceCheck Report: booking-test
+  Status: PASSED  |  Turns: 3/3  |  Avg Latency: 1.2s
+```
+
+**Works with any platform** — LiveKit, Daily/Pipecat, VAPI, Retell, or [write your own transport plugin](docs/reference/python-api.md#creating-a-custom-transport).
 
 ---
 
-## Why VoiceCheck?
+## What it catches that text tests miss
 
-Most voice agent testing stops at the text layer. But real users **speak**, and the agent **speaks back**. VoiceCheck tests the full audio loop end-to-end, catching issues that text-only tests miss:
-
-- Audio encoding/decoding bugs
-- Real-world latency (first byte, total response time)
-- Silence detection and turn-taking
-- TTS pronunciation failures
-- Transport-level connection issues
-- Cross-provider regressions
-
-**Works with any voice platform** — LiveKit, Daily/Pipecat, VAPI, Retell, or write your own transport plugin.
+- Real-world audio latency (not simulated, actually measured end-to-end)
+- Audio encoding/decoding bugs across transports
+- Agent behavior under background noise, low bandwidth, packet loss
+- Silence handling and turn-taking edge cases
+- Multi-language TTS/STT quality degradation
+- Interruption (barge-in) handling
+- Emotional tone drift across long conversations
 
 ## Install
 
