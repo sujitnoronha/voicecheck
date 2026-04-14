@@ -1,6 +1,10 @@
 # VoiceCheck
 
-**Cypress for voice agents.** Write YAML scenarios, send real audio, get real latency numbers. Open source.
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Tests: 268 passing](https://img.shields.io/badge/tests-268%20passing-brightgreen.svg)](tests/)
+
+**Cypress for voice agents.** Write a YAML file. Send real audio. Get real latency numbers.
 
 ```
   "Hello, how are you?"
@@ -11,14 +15,18 @@
     └───────┘    └───────────┘    └───────┘    └──────────┘
                        │                             │
           LiveKit / Daily / VAPI / Retell      Latency? ✓
-                                               Keywords? ✓
+               + custom transports             Keywords? ✓
                                                Tone? ✓
                                                LLM Judge? ✓
 ```
 
-Most voice agent testing is "call it and vibes-check the response." VoiceCheck sends real audio through real transports and measures what actually happens: first-byte latency, turn-taking behavior, silence handling, emotional tone, multi-language quality, and agent behavior under noise/packet loss.
+### The problem
 
-**One YAML file. Real audio. Real numbers.**
+Most voice agent testing is "call it and vibes-check the response." That works until you ship to production and discover your agent takes 4 seconds to respond, breaks when someone interrupts, or sounds robotic in Spanish.
+
+### What VoiceCheck does
+
+Sends real audio through real transports and measures what actually happens. First-byte latency, turn-taking behavior, silence handling, emotional tone, multi-language quality, agent behavior under noise and packet loss. All from a YAML file.
 
 ```yaml
 turns:
@@ -32,20 +40,45 @@ turns:
         criteria: "Agent acknowledges the request and asks for details"
 ```
 
-```bash
+```
 $ voicecheck run booking_test.yaml
 
+============================================================
   VoiceCheck Report: booking-test
   Status: PASSED  |  Turns: 3/3  |  Avg Latency: 1.2s
+============================================================
+
+Turn 1: [PASS]
+  User:  Hi, can you help me book a flight?
+  Agent: Of course! Where would you like to fly to?
+  Latency: first_byte=890ms, total=2100ms
+  [+] latency: First byte 890ms within 2000ms limit (score=1.00)
+  [+] emotional_tone: Detected: helpful, friendly (score=0.92)
+  [+] llm_judge: Agent acknowledged request clearly (score=0.95)
 ```
 
-**Works with any platform** — LiveKit, Daily/Pipecat, VAPI, Retell, or [write your own transport plugin](docs/reference/python-api.md#creating-a-custom-transport).
+### Highlights
+
+| | |
+|---|---|
+| **4 transports** | LiveKit, Daily/Pipecat, VAPI, Retell + [write your own](docs/reference/python-api.md#creating-a-custom-transport) |
+| **6 evaluators** | latency, keyword, turn_count, llm_judge, emotional_tone + [custom](docs/guides/evaluators.md#creating-custom-evaluators) |
+| **4 test modes** | Scripted, questions, persona (LLM-driven), guided flow |
+| **18 languages** | Auto TTS voice + STT selection via `audio.language: "es"` |
+| **Audio degradation** | Noise injection, bandwidth reduction, packet loss, codec artifacts |
+| **Load testing** | `--concurrent 20` for 20 simultaneous sessions with P95 reporting |
+| **Interruption testing** | Mid-response barge-in: `interrupt: {after_ms: 2000, with: "Wait"}` |
+| **Silence testing** | Agent behavior on user silence: `silence: {duration_s: 10}` |
+| **Soak testing** | `--duration 1h` with aggregate pass rate and latency trends |
+| **Dashboard** | SQLite storage, HTML reports, live FastAPI dashboard |
+| **Pure Python** | No numpy/scipy. Audio processing works everywhere |
+| **268 tests** | Comprehensive unit test coverage |
 
 ---
 
 ## What it catches that text tests miss
 
-- Real-world audio latency (not simulated, actually measured end-to-end)
+- Real-world audio latency (measured end-to-end, not simulated)
 - Audio encoding/decoding bugs across transports
 - Agent behavior under background noise, low bandwidth, packet loss
 - Silence handling and turn-taking edge cases
