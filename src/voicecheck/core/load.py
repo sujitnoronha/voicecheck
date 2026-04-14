@@ -108,24 +108,30 @@ async def run_concurrent(
     Returns:
         LoadTestSummary with aggregate results.
     """
+    # Cap concurrent connections to avoid resource exhaustion
+    max_parallel = min(concurrent, 50)
+    if concurrent > 50:
+        logger.warning("Capping concurrent sessions from %d to 50", concurrent)
+    sem = asyncio.Semaphore(max_parallel)
     start = time.monotonic()
 
     async def _run_session(session_id: int) -> LoadTestResult:
-        s = time.monotonic()
-        try:
-            scenario = load_scenario(scenario_path)
-            runner = ScenarioRunner(scenario, skip_llm_judge=skip_llm_judge)
-            report = await runner.run()
-            return LoadTestResult(
-                session_id=session_id, report=report,
-                start_ts=s, end_ts=time.monotonic(),
-            )
-        except Exception as e:
-            logger.error("Session %d error: %s", session_id, e)
-            return LoadTestResult(
-                session_id=session_id, error=str(e),
-                start_ts=s, end_ts=time.monotonic(),
-            )
+        async with sem:
+            s = time.monotonic()
+            try:
+                scenario = load_scenario(scenario_path)
+                runner = ScenarioRunner(scenario, skip_llm_judge=skip_llm_judge)
+                report = await runner.run()
+                return LoadTestResult(
+                    session_id=session_id, report=report,
+                    start_ts=s, end_ts=time.monotonic(),
+                )
+            except Exception as e:
+                logger.error("Session %d error: %s", session_id, e)
+                return LoadTestResult(
+                    session_id=session_id, error=str(e),
+                    start_ts=s, end_ts=time.monotonic(),
+                )
 
     results = await asyncio.gather(*[_run_session(i) for i in range(concurrent)])
     duration = time.monotonic() - start

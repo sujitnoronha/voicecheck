@@ -246,7 +246,10 @@ class ResultStore:
     ) -> dict[str, float]:
         """Compute latency percentiles (p50, p95, p99) for a scenario."""
         conn = self._get_conn()
-        col = "first_byte_ms" if metric == "first_byte_ms" else "total_ms"
+        _ALLOWED_METRICS = {"first_byte_ms", "total_ms"}
+        if metric not in _ALLOWED_METRICS:
+            raise ValueError(f"Invalid metric: {metric!r}. Allowed: {_ALLOWED_METRICS}")
+        col = metric
         rows = conn.execute(
             f"""SELECT t.{col} FROM turns t
                 JOIN runs r ON t.run_id = r.id

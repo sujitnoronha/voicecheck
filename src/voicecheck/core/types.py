@@ -100,7 +100,13 @@ class TurnResult:
 
     @property
     def passed(self) -> bool:
-        """True if all evaluators passed for this turn."""
+        """True if all evaluators passed for this turn.
+
+        A turn with no evaluators and no agent response is considered failed
+        (prevents silent false passes when agent returns nothing).
+        """
+        if not self.eval_results and not self.agent_text:
+            return False
         return all(r.passed for r in self.eval_results)
 
 

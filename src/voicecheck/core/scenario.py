@@ -522,11 +522,19 @@ class ScenarioRunner:
                                 silence_threshold=scenario.settings.silence_threshold,
                             )
                         )
-                        await asyncio.sleep(turn_config.interrupt.after_ms / 1000.0)
-                        interrupt_frames = await tts.synthesize(turn_config.interrupt.with_text)
-                        interrupt_frames = self._apply_degradation(interrupt_frames)
-                        await transport.send_audio(interrupt_frames)
-                        agent_frames = await receive_task
+                        try:
+                            await asyncio.sleep(turn_config.interrupt.after_ms / 1000.0)
+                            interrupt_frames = await tts.synthesize(turn_config.interrupt.with_text)
+                            interrupt_frames = self._apply_degradation(interrupt_frames)
+                            await transport.send_audio(interrupt_frames)
+                            agent_frames = await receive_task
+                        except Exception:
+                            receive_task.cancel()
+                            try:
+                                await receive_task
+                            except (asyncio.CancelledError, Exception):
+                                pass
+                            raise
                         turn_metadata["interrupted"] = True
                         turn_metadata["interrupt_after_ms"] = turn_config.interrupt.after_ms
                         turn_metadata["interrupt_text"] = turn_config.interrupt.with_text

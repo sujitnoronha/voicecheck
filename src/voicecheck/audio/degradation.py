@@ -32,6 +32,8 @@ def add_gaussian_noise(pcm_data: bytes, snr_db: float) -> bytes:
     if num_samples == 0:
         return pcm_data
 
+    # Truncate to even byte boundary to prevent struct.unpack errors
+    pcm_data = pcm_data[:num_samples * 2]
     samples = struct.unpack(f"<{num_samples}h", pcm_data)
 
     # Compute signal RMS
@@ -76,6 +78,7 @@ def lowpass_filter(pcm_data: bytes, cutoff_hz: int, sample_rate: int) -> bytes:
     if num_samples == 0:
         return pcm_data
 
+    pcm_data = pcm_data[:num_samples * 2]
     samples = struct.unpack(f"<{num_samples}h", pcm_data)
 
     # Single-pole IIR: y[n] = alpha * x[n] + (1 - alpha) * y[n-1]
