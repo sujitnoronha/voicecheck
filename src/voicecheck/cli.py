@@ -73,15 +73,20 @@ def _ensure_registrations() -> None:
     import voicecheck.evaluators.keyword  # noqa: F401
     import voicecheck.evaluators.turn_count  # noqa: F401
 
-    try:
-        import voicecheck.evaluators.llm_judge  # noqa: F401
-    except ImportError:
-        pass
-
-    try:
-        import voicecheck.evaluators.emotional_tone  # noqa: F401
-    except ImportError:
-        pass
+    # LLM-based evaluators — require openai or anthropic SDK
+    for _eval_mod in (
+        "voicecheck.evaluators.llm_judge",
+        "voicecheck.evaluators.emotional_tone",
+        "voicecheck.evaluators.memory_recall",
+        "voicecheck.evaluators.character_break",
+        "voicecheck.evaluators.info_leakage",
+        "voicecheck.evaluators.fact_accuracy",
+        "voicecheck.evaluators.personality_consistency",
+    ):
+        try:
+            __import__(_eval_mod)
+        except ImportError:
+            pass
 
 
 @click.group()

@@ -23,35 +23,30 @@ def _make_context(agent_text: str = "", conversation: list | None = None) -> Eva
     )
 
 
-def _mock_openai_response(score: float, detected: list, reason: str = "test"):
-    """Create a mock OpenAI response with the expected JSON."""
-    response_json = json.dumps({
-        "score": score,
-        "passed": score >= 0.7,
-        "detected_emotions": detected,
-        "expected_present": detected,
+def _mock_llm_response(**kwargs):
+    """Create a mock return value for call_llm_judge."""
+    defaults = {
+        "score": 0.8,
+        "passed": True,
+        "detected_emotions": [],
+        "expected_present": [],
         "expected_missing": [],
         "forbidden_present": [],
-        "reason": reason,
-    })
-
-    mock_client = AsyncMock()
-    mock_client.chat.completions.create.return_value = AsyncMock(
-        choices=[AsyncMock(message=AsyncMock(content=response_json))]
-    )
-    return mock_client
+        "reason": "test",
+    }
+    defaults.update(kwargs)
+    return defaults
 
 
 class TestEmotionalToneEvaluator:
     @pytest.mark.asyncio
-    async def test_passes_when_emotions_match(self):
-        ev = EmotionalToneEvaluator(
-            expected_emotions=["empathetic", "warm"],
-            min_score=0.7,
+    @patch("voicecheck.evaluators.emotional_tone.call_llm_judge")
+    async def test_passes_when_emotions_match(self, mock_llm):
+        mock_llm.return_value = _mock_llm_response(
+            score=0.9, detected_emotions=["empathetic", "warm"],
+            expected_present=["empathetic", "warm"], reason="Agent showed warmth",
         )
-        ev._openai_client = _mock_openai_response(
-            0.9, ["empathetic", "warm"], "Agent showed warmth"
-        )
+        ev = EmotionalToneEvaluator(expected_emotions=["empathetic", "warm"], min_score=0.7)
         ctx = _make_context("I understand how you feel. That must be tough.")
         result = await ev.evaluate(ctx)
         assert result.passed
@@ -59,46 +54,33 @@ class TestEmotionalToneEvaluator:
         assert result.evaluator_type == "emotional_tone"
 
     @pytest.mark.asyncio
-    async def test_fails_when_score_below_threshold(self):
-        ev = EmotionalToneEvaluator(
-            expected_emotions=["empathetic"],
-            min_score=0.8,
-        )
-        ev._openai_client = _mock_openai_response(0.4, [], "Agent was dismissive")
+    @patch("voicecheck.evaluators.emotional_tone.call_llm_judge")
+    async def test_fails_when_score_below_threshold(self, mock_llm):
+        mock_llm.return_value = _mock_llm_response(score=0.4, reason="Agent was dismissive")
+        ev = EmotionalToneEvaluator(expected_emotions=["empathetic"], min_score=0.8)
         ctx = _make_context("Whatever.")
         result = await ev.evaluate(ctx)
         assert not result.passed
         assert result.score == 0.4
 
     @pytest.mark.asyncio
-    async def test_forbidden_emotions_detected(self):
-        ev = EmotionalToneEvaluator(
-            forbidden_emotions=["dismissive", "cold"],
-            min_score=0.7,
+    @patch("voicecheck.evaluators.emotional_tone.call_llm_judge")
+    async def test_forbidden_emotions_detected(self, mock_llm):
+        mock_llm.return_value = _mock_llm_response(
+            score=0.2, detected_emotions=["dismissive"],
+            forbidden_present=["dismissive"], reason="Agent was dismissive",
         )
-        response_json = json.dumps({
-            "score": 0.2,
-            "passed": False,
-            "detected_emotions": ["dismissive"],
-            "expected_present": [],
-            "expected_missing": [],
-            "forbidden_present": ["dismissive"],
-            "reason": "Agent was dismissive",
-        })
-        ev._openai_client = AsyncMock()
-        ev._openai_client.chat.completions.create.return_value = AsyncMock(
-            choices=[AsyncMock(message=AsyncMock(content=response_json))]
-        )
+        ev = EmotionalToneEvaluator(forbidden_emotions=["dismissive", "cold"], min_score=0.7)
         ctx = _make_context("I don't care about your problem.")
         result = await ev.evaluate(ctx)
         assert not result.passed
         assert "dismissive" in result.details.get("forbidden_present", [])
 
     @pytest.mark.asyncio
-    async def test_handles_llm_error(self):
+    @patch("voicecheck.evaluators.emotional_tone.call_llm_judge")
+    async def test_handles_llm_error(self, mock_llm):
+        mock_llm.side_effect = Exception("API error")
         ev = EmotionalToneEvaluator(expected_emotions=["warm"])
-        ev._openai_client = AsyncMock()
-        ev._openai_client.chat.completions.create.side_effect = Exception("API error")
         ctx = _make_context("Hello")
         result = await ev.evaluate(ctx)
         assert not result.passed
@@ -106,37 +88,28 @@ class TestEmotionalToneEvaluator:
         assert "error" in result.reason.lower()
 
     @pytest.mark.asyncio
-    async def test_handles_malformed_json(self):
-        ev = EmotionalToneEvaluator(expected_emotions=["warm"])
-        ev._openai_client = AsyncMock()
-        ev._openai_client.chat.completions.create.return_value = AsyncMock(
-            choices=[AsyncMock(message=AsyncMock(content="not json"))]
+    @patch("voicecheck.evaluators.emotional_tone.call_llm_judge")
+    async def test_no_emotions_specified(self, mock_llm):
+        mock_llm.return_value = _mock_llm_response(
+            score=0.8, detected_emotions=["neutral"], reason="Neutral tone",
         )
-        ctx = _make_context("Hello")
-        result = await ev.evaluate(ctx)
-        assert not result.passed
-        assert result.score == 0.0
-
-    @pytest.mark.asyncio
-    async def test_no_emotions_specified(self):
         ev = EmotionalToneEvaluator(min_score=0.5)
-        ev._openai_client = _mock_openai_response(0.8, ["neutral"], "Neutral tone")
         ctx = _make_context("The weather is fine today.")
         result = await ev.evaluate(ctx)
         assert result.passed
 
     @pytest.mark.asyncio
-    async def test_conversation_context_included(self):
-        ev = EmotionalToneEvaluator(expected_emotions=["supportive"])
-        ev._openai_client = _mock_openai_response(0.9, ["supportive"])
+    @patch("voicecheck.evaluators.emotional_tone.call_llm_judge")
+    async def test_conversation_context_included(self, mock_llm):
+        mock_llm.return_value = _mock_llm_response(score=0.9)
         conversation = [
             {"role": "user", "text": "I'm feeling down"},
             {"role": "agent", "text": "I'm sorry to hear that"},
         ]
+        ev = EmotionalToneEvaluator(expected_emotions=["supportive"])
         ctx = _make_context("Thank you for understanding", conversation=conversation)
         result = await ev.evaluate(ctx)
-        # Verify the LLM was called (conversation context was built)
-        ev._openai_client.chat.completions.create.assert_called_once()
+        mock_llm.assert_called_once()
 
     def test_default_model_openai(self):
         ev = EmotionalToneEvaluator(provider="openai")

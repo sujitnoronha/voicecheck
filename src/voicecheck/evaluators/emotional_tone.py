@@ -13,17 +13,19 @@ YAML usage:
 
 from __future__ import annotations
 
-import json
 import logging
-import re
-from typing import Any
 
 from voicecheck.core.evaluator import Evaluator, register_evaluator
 from voicecheck.core.types import EvalContext, EvalResult
+from voicecheck.evaluators._llm_service import (
+    build_conversation_context,
+    call_llm_judge,
+    default_model,
+)
 
 logger = logging.getLogger("voicecheck.evaluators.emotional_tone")
 
-SYSTEM_PROMPT = """You are an expert at analyzing emotional tone in conversations.
+_SYSTEM = """You are an expert at analyzing emotional tone in conversations.
 Given a conversation turn, identify the emotional qualities of the agent's response
 and score how well it matches expected emotional tones.
 
@@ -44,7 +46,7 @@ Scoring:
 - 0.3-0.6 = mixed results or some forbidden emotions detected
 - 0.0-0.2 = forbidden emotions dominant or expected emotions absent"""
 
-USER_PROMPT = """## Conversation Context
+_USER = """## Conversation Context
 {conversation_context}
 
 ## Current Turn
@@ -76,16 +78,9 @@ class EmotionalToneEvaluator(Evaluator):
         self.forbidden_emotions = forbidden_emotions or []
         self.min_score = min_score
         self.provider = provider
-        self.model = model or self._default_model(provider)
-        self._openai_client: Any = None
-        self._anthropic_client: Any = None
+        self.model = model or default_model(provider)
 
     async def evaluate(self, context: EvalContext) -> EvalResult:
-        conv_lines = []
-        for msg in context.conversation:
-            conv_lines.append(f"{msg.get('role', 'unknown')}: {msg.get('text', '')}")
-        conversation_context = "\n".join(conv_lines) if conv_lines else "(first turn)"
-
         expected_section = (
             "\n".join(f"- {e}" for e in self.expected_emotions)
             if self.expected_emotions
@@ -97,8 +92,8 @@ class EmotionalToneEvaluator(Evaluator):
             else "(none specified)"
         )
 
-        user_prompt = USER_PROMPT.format(
-            conversation_context=conversation_context,
+        user_prompt = _USER.format(
+            conversation_context=build_conversation_context(context.conversation),
             user_text=context.user_text,
             agent_text=context.agent_text,
             expected_section=expected_section,
@@ -107,8 +102,9 @@ class EmotionalToneEvaluator(Evaluator):
         )
 
         try:
-            response_text = await self._call_llm(user_prompt)
-            result = json.loads(_strip_markdown_fences(response_text))
+            result = await call_llm_judge(
+                _SYSTEM, user_prompt, model=self.model, provider=self.provider
+            )
             score = float(result["score"])
             passed = score >= self.min_score
             reason = result.get("reason", "")
@@ -134,55 +130,6 @@ class EmotionalToneEvaluator(Evaluator):
                 "model": self.model,
             },
         )
-
-    async def _call_llm(self, user_prompt: str) -> str:
-        if self.provider == "openai":
-            return await self._call_openai(user_prompt)
-        elif self.provider == "anthropic":
-            return await self._call_anthropic(user_prompt)
-        raise ValueError(f"Unknown provider: {self.provider}")
-
-    async def _call_openai(self, user_prompt: str) -> str:
-        if self._openai_client is None:
-            from openai import AsyncOpenAI
-            self._openai_client = AsyncOpenAI()
-        response = await self._openai_client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.1,
-            response_format={"type": "json_object"},
-        )
-        return response.choices[0].message.content or "{}"
-
-    async def _call_anthropic(self, user_prompt: str) -> str:
-        if self._anthropic_client is None:
-            from anthropic import AsyncAnthropic
-            self._anthropic_client = AsyncAnthropic()
-        response = await self._anthropic_client.messages.create(
-            model=self.model,
-            max_tokens=256,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
-            temperature=0.1,
-        )
-        return response.content[0].text
-
-    @staticmethod
-    def _default_model(provider: str) -> str:
-        if provider == "anthropic":
-            return "claude-sonnet-4-5-20250929"
-        return "gpt-4o-mini"
-
-
-def _strip_markdown_fences(text: str) -> str:
-    text = text.strip()
-    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
-    if match:
-        return match.group(1).strip()
-    return text
 
 
 register_evaluator("emotional_tone", EmotionalToneEvaluator)
