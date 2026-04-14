@@ -317,6 +317,7 @@ Dataclass passed to evaluators with full context about the current turn.
 | `turn_index` | `int` | Zero-based turn index. |
 | `scenario_name` | `str` | Scenario name. |
 | `conversation` | `list[dict]` | Full conversation history (list of `{"role": "user"|"agent", "text": "..."}` dicts). |
+| `turn_metadata` | `dict` | Transport/runner metadata for this turn. Populated for interrupt turns (`{"interrupted": True, "interrupt_after_ms": N, "interrupt_text": "..."}`) and silence turns (`{"silence": True, "silence_duration_s": N}`). Empty dict by default. |
 
 ---
 
@@ -694,3 +695,129 @@ Dataclass representing a transcribed segment of audio (returned by STT providers
 | `start_time` | `float` | `0.0` | Start time in seconds. |
 | `end_time` | `float` | `0.0` | End time in seconds. |
 | `confidence` | `float` | `1.0` | Transcription confidence (0.0 to 1.0). |
+
+---
+
+## Load Testing API
+
+`voicecheck.core.load` provides programmatic access to concurrent session testing.
+
+### LoadTestResult
+
+```python
+@dataclass
+class LoadTestResult:
+    session_id: int
+    report: ScenarioReport | None = None
+    error: str | None = None
+    start_ts: float = 0.0
+    end_ts: float = 0.0
+
+    @property
+    def duration_s(self) -> float: ...
+    @property
+    def passed(self) -> bool: ...
+```
+
+### LoadTestSummary
+
+```python
+@dataclass
+class LoadTestSummary:
+    concurrent_sessions: int
+    sessions_completed: int
+    sessions_failed: int
+    sessions_errored: int
+    total_turns: int
+    passed_turns: int
+    all_first_byte_ms: list[float]
+    all_total_ms: list[float]
+    duration_seconds: float
+    per_session: list[LoadTestResult]
+
+    @property
+    def pass_rate(self) -> float: ...          # (completed / concurrent) * 100
+    @property
+    def avg_first_byte_ms(self) -> float: ...
+    @property
+    def p50_first_byte_ms(self) -> float: ...
+    @property
+    def p95_first_byte_ms(self) -> float: ...
+    @property
+    def p99_first_byte_ms(self) -> float: ...
+    @property
+    def throughput_per_min(self) -> float: ...  # sessions per minute
+```
+
+### run_concurrent
+
+```python
+async def run_concurrent(
+    scenario_path: Path,
+    concurrent: int,
+    skip_llm_judge: bool = False,
+) -> LoadTestSummary:
+    """Run N concurrent sessions of the same scenario."""
+```
+
+### Example
+
+```python
+import asyncio
+from pathlib import Path
+from voicecheck.core.load import run_concurrent, print_load_summary
+
+async def main():
+    summary = await run_concurrent(Path("scenario.yaml"), concurrent=10)
+    print_load_summary(summary)
+    print(f"P95 latency: {summary.p95_first_byte_ms:.0f}ms")
+    print(f"Throughput: {summary.throughput_per_min:.1f} sessions/min")
+
+asyncio.run(main())
+```
+
+---
+
+## Audio Degradation API
+
+`voicecheck.audio.degradation` provides pure-Python audio processing for testing agent robustness. No numpy/scipy dependencies.
+
+### Functions
+
+```python
+def add_gaussian_noise(pcm_data: bytes, snr_db: float) -> bytes:
+    """Add Gaussian noise at the specified signal-to-noise ratio (dB).
+    20 dB = light noise, 10 dB = noisy, 5 dB = very noisy."""
+
+def lowpass_filter(pcm_data: bytes, cutoff_hz: int, sample_rate: int) -> bytes:
+    """Single-pole IIR low-pass filter. Use 3400 Hz for narrowband telephony."""
+
+def simulate_packet_loss(frames: list[AudioFrame], loss_pct: float) -> list[AudioFrame]:
+    """Randomly zero out frames to simulate network packet loss (0-100%)."""
+
+def codec_roundtrip(pcm_data: bytes) -> bytes:
+    """PCM -> mu-law -> PCM round-trip. Simulates G.711 telephony codec artifacts."""
+
+def apply_degradation(
+    frames: list[AudioFrame],
+    noise_snr_db: float | None = None,
+    bandwidth: str | None = None,       # "narrowband" or "wideband"
+    packet_loss_pct: float | None = None,
+    codec: str | None = None,           # "mulaw"
+) -> list[AudioFrame]:
+    """Chain degradation effects: noise -> bandwidth -> codec -> packet loss."""
+```
+
+### Silence Generation
+
+```python
+from voicecheck.audio.utils import generate_silence
+
+frames = generate_silence(
+    duration_s=5.0,
+    sample_rate=16000,
+    num_channels=1,
+    frame_duration_ms=20,
+)
+# Returns list of AudioFrame with zero PCM data
+```

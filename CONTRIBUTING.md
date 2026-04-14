@@ -28,7 +28,7 @@ pytest tests/unit/ -v
 ```
 src/voicecheck/
 ├── core/              # Types, ABCs, scenario runner, reports
-├── transports/        # LiveKit, Daily, VAPI, Retell, Telephony transports
+├── transports/        # LiveKit, Daily, VAPI, Retell transports
 │   └── websocket_base.py  # Base class for WebSocket-based transports
 ├── audio/             # TTS/STT providers + shared audio utilities
 ├── evaluators/        # Latency, keyword, LLM judge, turn count

@@ -5,7 +5,7 @@
 ```
 Your text ──► TTS ──► Audio ──► Transport ──► Agent ──► Audio ──► STT ──► Evaluate
                                    │
-                    LiveKit / Daily / VAPI / Retell / Telephony
+                       LiveKit / Daily / VAPI / Retell
 ```
 
 ---
@@ -21,7 +21,7 @@ Most voice agent testing stops at the text layer. But real users **speak**, and 
 - Transport-level connection issues
 - Cross-provider regressions
 
-**Works with any voice platform** — LiveKit, Daily/Pipecat, VAPI, Retell, or any agent with a phone number.
+**Works with any voice platform** — LiveKit, Daily/Pipecat, VAPI, Retell, or write your own transport plugin.
 
 ## Install
 
@@ -34,7 +34,6 @@ pip install voicecheck[livekit,tts,stt]      # LiveKit + Edge TTS + local Whispe
 pip install voicecheck[vapi,tts,stt]         # VAPI + Edge TTS + local Whisper
 pip install voicecheck[retell,tts,stt]       # Retell + Edge TTS + local Whisper
 pip install voicecheck[daily,tts,stt]        # Daily/Pipecat + Edge TTS + local Whisper
-pip install voicecheck[telephony,tts,stt]    # Twilio phone calls + Edge TTS + local Whisper
 ```
 
 **Extras breakdown:**
@@ -45,7 +44,6 @@ pip install voicecheck[telephony,tts,stt]    # Twilio phone calls + Edge TTS + l
 | `daily` | `daily-python` | Testing agents on Daily/Pipecat |
 | `vapi` | `websockets`, `httpx` | Testing agents on VAPI |
 | `retell` | `websockets`, `httpx` | Testing agents on Retell |
-| `telephony` | `twilio`, `aiohttp` | Testing any agent via phone call |
 | `tts` | `edge-tts`, `pydub` | Free TTS via Microsoft Edge (no API key) |
 | `stt` | `faster-whisper` | Local speech-to-text (no API key, downloads model) |
 | `llm` | `openai`, `anthropic` | OpenAI TTS/STT, LLM judge, persona conversations |
@@ -280,47 +278,6 @@ transport:
 
 Retell's native audio rate is 24kHz — VoiceCheck automatically resamples to/from its internal 16kHz format.
 
-### Telephony (Twilio)
-
-Test **any** voice agent by calling its phone number. Provider-agnostic — works with agents on VAPI, Retell, LiveKit, or any platform with a phone number.
-
-```bash
-pip install voicecheck[telephony]
-```
-
-```yaml
-transport:
-  type: telephony
-  mode: twilio
-  config:
-    account_sid: "${TWILIO_ACCOUNT_SID}"
-    auth_token: "${TWILIO_AUTH_TOKEN}"
-    from_number: "${TWILIO_FROM_NUMBER}"
-    to_number: "${AGENT_PHONE_NUMBER}"
-    public_url: "${VOICECHECK_PUBLIC_URL}"   # e.g., https://abc123.ngrok.io
-    server_port: 8765
-    call_connect_timeout: 30.0
-```
-
-**How it works:**
-1. VoiceCheck starts a local WebSocket server
-2. Twilio places an outbound call to the agent's phone number
-3. Audio streams bidirectionally via Twilio Media Streams (G.711 mu-law at 8kHz)
-4. VoiceCheck handles all codec conversion (mu-law to PCM, 8kHz to 16kHz) automatically
-
-**Prerequisites:**
-- A Twilio account with a phone number
-- A publicly accessible URL for Twilio to reach VoiceCheck (e.g., [ngrok](https://ngrok.com))
-- The agent's phone number
-
-```bash
-# Start ngrok in a separate terminal
-ngrok http 8765
-
-# Set the public URL
-export VOICECHECK_PUBLIC_URL=https://abc123.ngrok.io
-```
-
 ### Provider Comparison
 
 | Transport | Type | Connection | Best for |
@@ -329,7 +286,6 @@ export VOICECHECK_PUBLIC_URL=https://abc123.ngrok.io
 | **Daily** | WebRTC | Room-based | Pipecat agents, Daily-hosted agents |
 | **VAPI** | WebSocket | API call | VAPI-managed agents |
 | **Retell** | WebSocket | API call | Retell-managed agents |
-| **Telephony** | Phone (Twilio) | Phone call | Any agent with a phone number |
 
 ## Audio Providers
 
@@ -489,6 +445,7 @@ flow:
 | `keyword` | Words present/absent in response | `must_contain`, `must_not_contain`, `case_sensitive` |
 | `turn_count` | Response length | `min_words`, `max_words` |
 | `llm_judge` | Semantic quality via LLM | `criteria`, `min_score`, `provider`, `model` |
+| `emotional_tone` | Emotional quality via LLM | `expected_emotions`, `forbidden_emotions`, `min_score` |
 
 ### LLM Judge
 
@@ -544,6 +501,67 @@ voicecheck run my_test.yaml --duration 1h --parallel 4  # 1 hour, 4 concurrent
 
 Output includes aggregate statistics: pass rate, average latency, P95 latency, and per-scenario breakdowns.
 
+## Load Testing
+
+Run N simultaneous sessions of the same scenario to test agent behavior under concurrent load.
+
+```bash
+voicecheck run scenario.yaml --concurrent 10              # 10 simultaneous sessions
+voicecheck run scenario.yaml --concurrent 20 --duration 5m  # sustained load
+```
+
+Reports per-session pass/fail, aggregate latency percentiles (P50, P95, P99), and throughput (sessions/min).
+
+## Audio Degradation
+
+Simulate real-world audio conditions to test agent robustness.
+
+```yaml
+audio:
+  degradation:
+    noise_snr_db: 15          # background noise (lower = noisier)
+    bandwidth: narrowband     # 8kHz telephony simulation
+    packet_loss_pct: 5        # 5% frame dropout
+    codec: mulaw              # G.711 codec artifacts
+```
+
+Effects are chained: noise -> bandwidth -> codec -> packet loss. Each is optional. Pure Python, no numpy/scipy.
+
+## Multi-Language
+
+Test agents in 18 languages with automatic TTS voice and STT language selection.
+
+```yaml
+audio:
+  language: "es"    # auto-selects Spanish TTS voice + STT
+```
+
+Supported: en, es, fr, de, pt, ja, ko, zh, it, hi, ar, ru, nl, pl, sv, tr, th, vi.
+
+## Interruption & Silence Testing
+
+Test edge cases that break voice agents in production.
+
+```yaml
+turns:
+  # Test mid-response barge-in
+  - user: "Tell me a long story"
+    interrupt:
+      after_ms: 2000
+      with: "Wait, stop"
+
+  # Test silence handling
+  - silence:
+      duration_s: 10
+    expect:
+      - type: turn_count
+        min_words: 1
+
+  # Test delayed response
+  - user: "Sorry, I'm back"
+    pause_before_ms: 3000
+```
+
 ## Results & Dashboards
 
 Results are automatically saved to `~/.voicecheck/results.db` (SQLite). Use `--no-save` to skip.
@@ -592,6 +610,7 @@ voicecheck run <path>                 # run scenario file or directory
   --skip-llm-judge                    # skip LLM evaluators (saves API cost)
   -q, --questions <text>              # override user messages (repeatable)
   --auto                              # switch to persona mode
+  --concurrent <n>                    # N simultaneous sessions (load testing)
   --no-save                           # skip saving to database
   --db <path>                         # custom database path
 
@@ -655,7 +674,7 @@ name: "My scenario"                     # Scenario name (shown in reports)
 description: "What this tests"          # Optional description
 
 # ── Transport ──
-# type: livekit | daily | vapi | retell | telephony
+# type: livekit | daily | vapi | retell
 transport:
   type: livekit
   mode: direct
@@ -667,7 +686,7 @@ transport:
     # Daily room_url: room_url, meeting_token
     # VAPI: api_key, assistant_id (or assistant_config), audio_format
     # Retell: api_key, agent_id
-    # Telephony: account_sid, auth_token, from_number, to_number, public_url
+
 
 # ── Audio ──
 audio:
@@ -675,12 +694,21 @@ audio:
   stt_provider: whisper                  # whisper | openai
   sample_rate: 16000                     # Audio sample rate in Hz
   channels: 1                            # Number of audio channels
+  language: ""                           # Language code (e.g., "es", "fr", "ja")
+  degradation:                           # Optional: simulate real-world conditions
+    noise_snr_db: null                   #   Gaussian noise (dB, lower = noisier)
+    bandwidth: null                      #   "narrowband" (8kHz) or "wideband" (7kHz)
+    packet_loss_pct: null                #   Frame dropout percentage (0-100)
+    codec: null                          #   "mulaw" for G.711 roundtrip
   tts_kwargs: {}                         # Extra kwargs passed to TTS provider
   stt_kwargs: {}                         # Extra kwargs passed to STT provider
 
 # ── Scripted mode ──
 turns:
-  - user: "Hello!"
+  - user: "Hello!"                       # Text to synthesize and send
+    pause_before_ms: 0                   # Optional: delay before turn (ms)
+    interrupt: null                       # Optional: {after_ms: int, with: "text"}
+    silence: null                         # Optional: {duration_s: float} (alt to user)
     expect:
       - type: latency
         max_first_byte_ms: 3000
@@ -742,7 +770,6 @@ See the [examples/](examples/) directory:
 - **[daily_basic.yaml](examples/daily_basic.yaml)** — Daily/Pipecat scripted test
 - **[vapi_web_call.yaml](examples/vapi_web_call.yaml)** — VAPI web call test
 - **[retell_web_call.yaml](examples/retell_web_call.yaml)** — Retell web call test
-- **[telephony_twilio.yaml](examples/telephony_twilio.yaml)** — Phone call test via Twilio
 - **[persona_kid.yaml](examples/persona_kid.yaml)** — Persona mode with a curious 7-year-old
 - **[livekit_token_server.yaml](examples/livekit_token_server.yaml)** — Token server integration
 - **[e2e_questions.yaml](examples/e2e_questions.yaml)** — Questions mode with shared evaluators
@@ -754,9 +781,9 @@ See the [examples/](examples/) directory:
 voicecheck/
 ├── src/voicecheck/
 │   ├── core/              # Types, ABCs, scenario runner, report generation
-│   ├── transports/        # LiveKit, Daily, VAPI, Retell, Telephony transports
-│   ├── audio/             # TTS/STT providers + shared audio utilities
-│   ├── evaluators/        # latency, keyword, turn_count, llm_judge
+│   ├── transports/        # LiveKit, Daily, VAPI, Retell transports
+│   ├── audio/             # TTS/STT providers, degradation, shared utilities
+│   ├── evaluators/        # latency, keyword, turn_count, llm_judge, emotional_tone
 │   ├── conversation/      # Persona-driven conversation engine
 │   ├── storage/           # SQLite result store + HTML dashboard generator
 │   ├── web/               # FastAPI live dashboard

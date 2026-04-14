@@ -17,7 +17,7 @@ VoiceCheck tests the full audio loop — TTS, transport, agent processing, STT, 
 
 ## Transport Providers
 
-VoiceCheck supports 5 transport providers out of the box:
+VoiceCheck supports 4 transport providers out of the box, with a plugin registry for adding your own:
 
 | Transport | Type | Install extra | Documentation |
 |-----------|------|--------------|---------------|
@@ -25,7 +25,6 @@ VoiceCheck supports 5 transport providers out of the box:
 | **Daily / Pipecat** | WebRTC | `daily` | [Daily Transport](transports/daily.md) |
 | **VAPI** | WebSocket | `vapi` | [VAPI Transport](transports/vapi.md) |
 | **Retell** | WebSocket | `retell` | [Retell Transport](transports/retell.md) |
-| **Telephony (Twilio)** | Phone call | `telephony` | [Telephony Transport](transports/telephony.md) |
 
 ## Reference
 
@@ -50,7 +49,6 @@ voicecheck/
 │   ├── daily.py       # Daily/Pipecat (WebRTC)
 │   ├── vapi.py        # VAPI (REST API + WebSocket)
 │   ├── retell.py      # Retell (REST API + WebSocket)
-│   ├── telephony.py   # Twilio Media Streams (phone calls)
 │   └── websocket_base.py  # Base class for WebSocket transports
 │
 ├── audio/             # Audio processing

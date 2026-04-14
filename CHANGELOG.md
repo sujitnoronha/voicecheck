@@ -5,7 +5,7 @@
 Initial release of VoiceCheck — E2E testing framework for voice agents.
 
 ### Features
-- **5 transports**: LiveKit, Daily, VAPI, Retell, Telephony with pluggable registry
+- **4 transports**: LiveKit, Daily, VAPI, Retell with pluggable registry
 - **4 conversation modes**: scripted turns, fixed questions, persona-driven (LLM), guided flow
 - **6 evaluators**: latency, keyword, turn_count, llm_judge, emotional_tone + pluggable registry
 - **Multi-language support**: 18 languages with automatic TTS voice selection via `audio.language`

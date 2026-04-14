@@ -57,7 +57,7 @@ transport:
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `type` | string | `"livekit"` | Transport type. Available: `livekit`, `daily`, `vapi`, `retell`, `telephony`. |
+| `type` | string | `"livekit"` | Transport type. Available: `livekit`, `daily`, `vapi`, `retell`, or any registered custom transport. |
 | `mode` | string | `"direct"` | Connection mode. Options depend on the transport type (see below). |
 | `config` | dict | `{}` | Transport-specific configuration. Keys depend on type and mode. |
 
@@ -102,15 +102,6 @@ response_mapping:
 | `web_call` | `api_key`, `agent_id` | `retell_sample_rate`, `metadata`, `retell_llm_dynamic_variables`, `request_timeout` |
 
 **`retell_sample_rate`**: Retell's native PCM rate (default `24000`). VoiceCheck resamples automatically.
-
-#### telephony
-
-| Mode | Required config keys | Optional config keys |
-|---|---|---|
-| `twilio` | `account_sid`, `auth_token`, `from_number`, `to_number`, `public_url` | `server_port`, `call_connect_timeout` |
-
-**`public_url`**: Must be reachable from the internet (e.g., ngrok URL).
-**`server_port`**: Local port for the HTTP/WebSocket server (default `8765`).
 
 ---
 

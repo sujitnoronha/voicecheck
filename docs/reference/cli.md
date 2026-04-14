@@ -147,7 +147,7 @@ voicecheck validate examples/
 ```
 scenario.yaml: OK
 broken.yaml: INVALID
-  - Unknown transport: 'websocket'. Available: livekit, daily, vapi, retell, telephony.
+  - Unknown transport: 'websocket'. Available: livekit, daily, vapi, retell.
   - Turn 0: Unknown evaluator: 'spelling'. Available: latency, keyword, turn_count, llm_judge.
 ```
 
@@ -374,7 +374,5 @@ VoiceCheck does not require any environment variables itself, but your scenarios
 | `VAPI_ASSISTANT_ID` | VAPI transport |
 | `RETELL_API_KEY` | Retell transport |
 | `RETELL_AGENT_ID` | Retell transport |
-| `TWILIO_ACCOUNT_SID` | Telephony transport |
-| `TWILIO_AUTH_TOKEN` | Telephony transport |
 | `OPENAI_API_KEY` | Persona mode, llm_judge evaluator, OpenAI TTS, OpenAI STT |
 | `ANTHROPIC_API_KEY` | llm_judge evaluator (Anthropic provider) |

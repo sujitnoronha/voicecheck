@@ -421,3 +421,21 @@ Custom evaluators have access to the raw agent audio via `context.agent_audio`, 
 - `duration_s` (float): duration in seconds
 
 This enables evaluators that analyze audio characteristics (volume, speech rate, pauses, etc.) directly.
+
+### Access to turn metadata
+
+Custom evaluators can also check `context.turn_metadata` for additional context about the current turn:
+
+- **Interrupt turns**: `{"interrupted": True, "interrupt_after_ms": 2000, "interrupt_text": "Wait, stop"}`
+- **Silence turns**: `{"silence": True, "silence_duration_s": 10.0}`
+- **Normal turns**: `{}` (empty dict)
+
+Example:
+
+```python
+async def evaluate(self, context: EvalContext) -> EvalResult:
+    if context.turn_metadata.get("interrupted"):
+        # Agent was interrupted — check if it stopped and addressed the interrupt
+        interrupt_text = context.turn_metadata["interrupt_text"]
+        # ... evaluate how well agent handled the barge-in
+```

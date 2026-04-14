@@ -1,6 +1,6 @@
 # Getting Started with VoiceCheck
 
-VoiceCheck is an end-to-end testing framework for voice agents. It tests the full audio loop: your text is synthesized to speech, sent to the agent through a transport (LiveKit, Daily, VAPI, Retell, or telephony), the agent's audio response is captured, transcribed back to text, and then evaluated against your criteria.
+VoiceCheck is an end-to-end testing framework for voice agents. It tests the full audio loop: your text is synthesized to speech, sent to the agent through a transport (LiveKit, Daily, VAPI, Retell, or your own custom transport), the agent's audio response is captured, transcribed back to text, and then evaluated against your criteria.
 
 This guide walks you through installing VoiceCheck, writing your first test scenario, running it, and understanding the output.
 
@@ -26,9 +26,6 @@ pip install voicecheck[vapi,tts,stt]
 
 # Retell agents
 pip install voicecheck[retell,tts,stt]
-
-# Telephony (Twilio) -- call any agent by phone number
-pip install voicecheck[telephony,tts,stt]
 
 # Everything (all transports + LLM judge + dashboard)
 pip install voicecheck[all]
@@ -66,7 +63,7 @@ For provider-specific setup details, see the transport documentation:
 - Daily: `docs/transports/daily.md`
 - VAPI: `docs/transports/vapi.md`
 - Retell: `docs/transports/retell.md`
-- Telephony: `docs/transports/telephony.md`
+- Custom transports: see [Python API Reference](../reference/python-api.md#creating-a-custom-transport)
 
 ## Your First Scenario
 
@@ -77,7 +74,7 @@ name: "My first voice agent test"
 description: "A simple scripted test with two turns"
 
 transport:
-  type: livekit          # or: daily, vapi, retell, telephony
+  type: livekit          # or: daily, vapi, retell
   mode: direct           # mode depends on your transport
   config:
     url: "${LIVEKIT_URL}"
