@@ -93,20 +93,46 @@ turns:
             os.unlink(path)
             del os.environ["TEST_LK_URL"]
 
-    def test_missing_env_var_preserved(self):
+    def test_missing_env_var_raises(self):
+        """Missing ${VAR} references must fail loudly — silently preserving
+        them caused confusing downstream failures (e.g. transport getting
+        '${API_KEY}' as the literal auth header and returning 401).
+        """
         yaml_content = """
 name: "env test"
 transport:
   type: livekit
   config:
-    url: "${NONEXISTENT_VAR}"
+    url: "${NONEXISTENT_VAR_1}"
+    key: "${NONEXISTENT_VAR_2}"
 turns:
   - user: "hi"
 """
         path = _write_yaml(yaml_content)
         try:
-            scenario = load_scenario(path)
-            assert scenario.transport.config["url"] == "${NONEXISTENT_VAR}"
+            with pytest.raises(ValueError, match="NONEXISTENT_VAR_1"):
+                load_scenario(path)
+        finally:
+            os.unlink(path)
+
+    def test_missing_env_vars_aggregated(self):
+        """All missing vars should appear in a single error message."""
+        yaml_content = """
+name: "env test"
+transport:
+  type: livekit
+  config:
+    url: "${MISSING_A}"
+    key: "${MISSING_B}"
+turns:
+  - user: "hi"
+"""
+        path = _write_yaml(yaml_content)
+        try:
+            with pytest.raises(ValueError) as exc_info:
+                load_scenario(path)
+            msg = str(exc_info.value)
+            assert "MISSING_A" in msg and "MISSING_B" in msg
         finally:
             os.unlink(path)
 
@@ -617,6 +643,58 @@ class TestRunEvaluatorsErrorHandling:
         assert len(results) == 1
         assert not results[0].passed
         assert "error" in results[0].reason.lower()
+
+
+# ── TurnResult.passed regression tests ──────────────────────────────
+
+
+class TestTurnResultPassed:
+    """Guards against the false-green bug where a crashed turn reported PASS
+    because its latency evaluator vacuously passed on first_byte_ms=0.
+    """
+
+    def test_crashed_turn_fails_even_with_passing_evals(self):
+        from voicecheck.core.types import (
+            EvalResult, TransportMetrics, TurnResult,
+        )
+        turn = TurnResult(
+            turn_index=0,
+            user_text="hi",
+            agent_text="",
+            eval_results=[EvalResult(
+                evaluator_type="latency", passed=True, score=1.0, reason="ok"
+            )],
+            metrics=TransportMetrics(),
+            error="persona LLM 401",
+        )
+        assert turn.passed is False
+
+    def test_empty_response_no_audio_fails(self):
+        from voicecheck.core.types import TransportMetrics, TurnResult
+        turn = TurnResult(
+            turn_index=0,
+            user_text="hi",
+            agent_text="",
+            agent_audio=[],
+            eval_results=[],
+            metrics=TransportMetrics(),
+        )
+        assert turn.passed is False
+
+    def test_normal_pass_path_still_works(self):
+        from voicecheck.core.types import (
+            EvalResult, TransportMetrics, TurnResult,
+        )
+        turn = TurnResult(
+            turn_index=0,
+            user_text="hi",
+            agent_text="hello there",
+            eval_results=[EvalResult(
+                evaluator_type="latency", passed=True, score=1.0, reason="ok"
+            )],
+            metrics=TransportMetrics(),
+        )
+        assert turn.passed is True
 
 
 # ── Skip LLM judge tests ──────────────────────────────────────────

@@ -97,15 +97,23 @@ class TurnResult:
     agent_audio: list[AudioFrame] = field(default_factory=list)
     metrics: TransportMetrics = field(default_factory=TransportMetrics)
     eval_results: list[EvalResult] = field(default_factory=list)
+    # Populated when the turn crashed (persona LLM failure, transport error,
+    # STT timeout, etc.). Non-empty means `passed` returns False regardless
+    # of what individual evaluators reported — a crashed turn cannot pass.
+    error: str = ""
 
     @property
     def passed(self) -> bool:
         """True if all evaluators passed for this turn.
 
-        A turn with no evaluators and no agent response is considered failed
-        (prevents silent false passes when agent returns nothing).
+        Hard fails (cannot pass regardless of evaluator results):
+          - The turn crashed during execution (``error`` populated).
+          - The agent returned no text AND no audio — every evaluator would
+            be scoring against nothing, so this prevents silent false passes.
         """
-        if not self.eval_results and not self.agent_text:
+        if self.error:
+            return False
+        if not self.agent_text and not self.agent_audio:
             return False
         return all(r.passed for r in self.eval_results)
 

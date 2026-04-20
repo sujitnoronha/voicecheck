@@ -209,11 +209,16 @@ def _mp3_to_pcm(mp3_data: bytes, target_sample_rate: int = 16000) -> bytes:
     """Convert MP3 bytes to 16-bit PCM at the target sample rate."""
     try:
         from pydub import AudioSegment
-    except ImportError:
+    except ImportError as e:
+        # pydub itself imports `audioop`, which Python 3.13 removed (PEP 594).
+        # The [tts] extra pulls in audioop-lts automatically on 3.13+, but if
+        # the user installed pydub manually they may hit this.
+        detail = f"Original error: {e}"
         raise ImportError(
-            "pydub not installed. Run: pip install pydub\n"
+            f"pydub could not be imported. {detail}\n"
+            "Fix: pip install 'voicecheck[tts]' (or on Python 3.13+: pip install audioop-lts)\n"
             "Also ensure ffmpeg is installed on your system."
-        )
+        ) from e
 
     audio = AudioSegment.from_mp3(io.BytesIO(mp3_data))
     audio = audio.set_frame_rate(target_sample_rate).set_channels(1).set_sample_width(2)

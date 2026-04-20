@@ -31,7 +31,7 @@ turns:
       - type: turn_count
         min_words: 5
       - type: keyword
-        forbidden: ["error", "undefined", "null"]
+        must_not_contain: ["error", "undefined", "null"]
 
 settings:
   turn_timeout: 15.0

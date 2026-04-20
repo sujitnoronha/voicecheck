@@ -19,6 +19,19 @@ from voicecheck.core.types import EvalContext, EvalResult, Timer, TurnResult
 logger = logging.getLogger("voicecheck.core.scenario")
 
 
+# Evaluator types that issue LLM calls — all skipped by --skip-llm-judge.
+_LLM_EVALUATOR_TYPES: frozenset[str] = frozenset({
+    "llm_judge",
+    "rubric_judge",
+    "emotional_tone",
+    "fact_accuracy",
+    "info_leakage",
+    "memory_recall",
+    "character_break",
+    "personality_consistency",
+})
+
+
 # ── Pydantic models for YAML schema ─────────────────────────────
 
 
@@ -183,35 +196,68 @@ class Scenario(BaseModel):
 # ── YAML loading ─────────────────────────────────────────────────
 
 
-def _expand_env_vars(value: Any) -> Any:
-    """Recursively expand ${VAR} references in strings."""
+class _MissingEnvVarError(ValueError):
+    """Raised when a scenario references ``${VAR}`` but VAR is not set."""
+
+
+def _expand_env_vars(value: Any, missing: set[str] | None = None) -> Any:
+    """Recursively expand ``${VAR}`` references in strings.
+
+    Missing env vars used to be silently preserved as the literal
+    ``${VAR}`` text, which caused downstream failures with confusing
+    "401 unauthorized" errors at transport-connect time. We now collect
+    every missing var as we walk the tree and raise a single aggregated
+    error at the end so users see the complete list.
+    """
+    # Root call owns the set; recursive calls share it.
+    top_level = missing is None
+    if top_level:
+        missing = set()
+
     if isinstance(value, str):
-        return re.sub(
-            r"\$\{(\w+)\}",
-            lambda m: os.environ.get(m.group(1), m.group(0)),
-            value,
-        )
+        def _sub(m: re.Match[str]) -> str:
+            var = m.group(1)
+            env = os.environ.get(var)
+            if env is None:
+                missing.add(var)
+                return m.group(0)  # preserve literal so we keep walking
+            return env
+        result: Any = re.sub(r"\$\{(\w+)\}", _sub, value)
     elif isinstance(value, dict):
-        return {k: _expand_env_vars(v) for k, v in value.items()}
+        result = {k: _expand_env_vars(v, missing) for k, v in value.items()}
     elif isinstance(value, list):
-        return [_expand_env_vars(item) for item in value]
-    return value
+        result = [_expand_env_vars(item, missing) for item in value]
+    else:
+        result = value
+
+    if top_level and missing:
+        names = ", ".join(sorted(missing))
+        raise _MissingEnvVarError(
+            f"Scenario references unset environment variables: {names}. "
+            "Export them, put them in a .env loaded by your runner, or use "
+            "dummy values for validation-only runs."
+        )
+    return result
 
 
-def load_scenario(path: str | Path) -> Scenario:
+def load_scenario(path: str | Path, *, strict_env: bool = True) -> Scenario:
     """Load a scenario from a YAML file.
 
-    Supports ${ENV_VAR} expansion in all string values.
+    Supports ``${ENV_VAR}`` expansion in all string values.
 
     Args:
         path: Path to the YAML scenario file.
+        strict_env: If True (default), raise when the YAML references env
+            vars that aren't set. ``voicecheck run`` uses this.
+            ``voicecheck validate`` sets this False — schema-only validation
+            shouldn't need live credentials.
 
     Returns:
         Parsed Scenario object.
 
     Raises:
         FileNotFoundError: If the file doesn't exist.
-        ValueError: If the YAML is invalid.
+        ValueError: If the YAML is invalid or references unset env vars.
     """
     path = Path(path)
     if not path.exists():
@@ -223,19 +269,47 @@ def load_scenario(path: str | Path) -> Scenario:
     if not isinstance(raw, dict):
         raise ValueError(f"Scenario must be a YAML mapping, got {type(raw).__name__}")
 
-    expanded = _expand_env_vars(raw)
+    try:
+        expanded = _expand_env_vars(raw)
+    except _MissingEnvVarError:
+        if strict_env:
+            raise
+        # Permissive mode: re-expand and swallow missing vars (keep literal).
+        expanded = _expand_env_vars_tolerant(raw)
     return Scenario(**expanded)
+
+
+def _expand_env_vars_tolerant(value: Any) -> Any:
+    """Like ``_expand_env_vars`` but leaves missing ``${VAR}`` as literals.
+
+    Only used by ``validate_scenario`` for schema-only checks.
+    """
+    if isinstance(value, str):
+        return re.sub(
+            r"\$\{(\w+)\}",
+            lambda m: os.environ.get(m.group(1), m.group(0)),
+            value,
+        )
+    elif isinstance(value, dict):
+        return {k: _expand_env_vars_tolerant(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [_expand_env_vars_tolerant(item) for item in value]
+    return value
 
 
 def validate_scenario(path: str | Path) -> list[str]:
     """Validate a scenario YAML file without running it.
+
+    Validates the schema and every evaluator's constructor. Does NOT require
+    referenced env vars to be set — schema-only checks should work in CI
+    without live credentials. ``voicecheck run`` is strict about env.
 
     Returns:
         List of validation errors (empty if valid).
     """
     errors: list[str] = []
     try:
-        scenario = load_scenario(path)
+        scenario = load_scenario(path, strict_env=False)
     except Exception as e:
         return [str(e)]
 
@@ -270,32 +344,46 @@ def validate_scenario(path: str | Path) -> list[str]:
             f"Unknown STT provider: {scenario.audio.stt_provider!r}. Available: {available}"
         )
 
-    # Check evaluator types in scripted turns
+    # Check evaluator types + instantiation for scripted turns
     for i, turn in enumerate(scenario.turns):
         for expect in turn.expect:
-            try:
-                get_evaluator(expect.type)
-            except ValueError as e:
-                errors.append(f"Turn {i}: {e}")
+            errors.extend(_check_expect(expect, where=f"Turn {i}"))
 
-    # Check per-turn evaluators (persona mode)
+    # Check per-turn evaluators (persona/questions mode)
     for expect in scenario.per_turn_expect:
-        try:
-            get_evaluator(expect.type)
-        except ValueError as e:
-            errors.append(f"per_turn_expect: {e}")
+        errors.extend(_check_expect(expect, where="per_turn_expect"))
 
     # Check flow step evaluators (guided mode)
     for j, step in enumerate(scenario.flow):
         if not step.goal:
             errors.append(f"Flow step {j}: 'goal' is required")
+        label = step.name or "unnamed"
         for expect in step.expect:
-            try:
-                get_evaluator(expect.type)
-            except ValueError as e:
-                errors.append(f"Flow step {j} ({step.name or 'unnamed'}): {e}")
+            errors.extend(_check_expect(expect, where=f"Flow step {j} ({label})"))
 
     return errors
+
+
+def _check_expect(expect: ExpectConfig, *, where: str) -> list[str]:
+    """Validate one evaluator config: registered AND instantiable.
+
+    Running the constructor is the cheapest way to catch kwarg typos,
+    missing-required kwargs (like ``rubric_judge``'s ``ground_truth``
+    enforcement), and plain type errors. Without this, YAML validation
+    lies: ``voicecheck validate`` returns OK, then the scenario crashes
+    inside ``_run_evaluators`` at runtime.
+    """
+    try:
+        evaluator_cls = get_evaluator(expect.type)
+    except ValueError as e:
+        return [f"{where}: {e}"]
+
+    kwargs = expect.model_dump(exclude={"type"})
+    try:
+        evaluator_cls(**kwargs)
+    except Exception as e:  # TypeError, ValueError, etc.
+        return [f"{where} [{expect.type}]: {type(e).__name__}: {e}"]
+    return []
 
 
 # ── ScenarioRunner ───────────────────────────────────────────────
@@ -367,14 +455,16 @@ class ScenarioRunner:
             or s.is_guided_mode
         )
         # Questions mode doesn't need OpenAI for generation (no persona LLM)
-        # Check if any turn uses llm_judge (skip check if --skip-llm-judge)
+        # Check if any turn uses an LLM evaluator (skip if --skip-llm-judge).
+        # Guided mode already forces needs_openai=True for the persona engine,
+        # so we only walk scripted turns and per_turn_expect here.
         if not self.skip_llm_judge:
             for turn in s.turns:
                 for expect in turn.expect:
-                    if expect.type == "llm_judge":
+                    if expect.type in _LLM_EVALUATOR_TYPES:
                         needs_openai = True
             for expect in s.per_turn_expect:
-                if expect.type == "llm_judge":
+                if expect.type in _LLM_EVALUATOR_TYPES:
                     needs_openai = True
             if s.conversation_eval and s.conversation_eval.criteria:
                 needs_openai = True
@@ -549,10 +639,12 @@ class ScenarioRunner:
                     transport.metrics.stt_duration_ms = stt_timer.elapsed_ms
                     agent_text = transcript.text
                     logger.info("Agent said: %s", agent_text[:100])
+                    turn_error = ""
                 except Exception as e:
                     logger.error("Turn %d failed: %s", i, e)
                     agent_text = ""
                     agent_frames = []
+                    turn_error = str(e)[:300]
 
                 conversation.append({"role": "user", "text": turn_config.user or "[silence]"})
                 conversation.append({"role": "agent", "text": agent_text})
@@ -578,6 +670,7 @@ class ScenarioRunner:
                     agent_audio=agent_frames,
                     metrics=transport.metrics,
                     eval_results=eval_results,
+                    error=turn_error,
                 ))
         finally:
             await transport.disconnect()
@@ -627,10 +720,12 @@ class ScenarioRunner:
                     transport.metrics.stt_duration_ms = stt_timer.elapsed_ms
                     agent_text = transcript.text
                     logger.info("Agent said: %s", agent_text[:100])
+                    turn_error = ""
                 except Exception as e:
                     logger.error("Question %d failed: %s", i, e)
                     agent_text = ""
                     agent_frames = []
+                    turn_error = str(e)[:300]
 
                 conversation.append({"role": "user", "text": user_text})
                 conversation.append({"role": "agent", "text": agent_text})
@@ -654,6 +749,7 @@ class ScenarioRunner:
                     agent_audio=agent_frames,
                     metrics=transport.metrics,
                     eval_results=eval_results,
+                    error=turn_error,
                 ))
         finally:
             await transport.disconnect()
@@ -742,10 +838,12 @@ class ScenarioRunner:
                     transport.metrics.stt_duration_ms = stt_timer.elapsed_ms
                     agent_text = transcript.text
                     logger.info("Agent said: %s", agent_text[:100])
+                    turn_error = ""
                 except Exception as e:
                     logger.error("Persona turn %d failed: %s", i, e)
                     agent_text = ""
                     agent_frames = []
+                    turn_error = str(e)[:300]
 
                 conversation.append({"role": "user", "text": user_text})
                 conversation.append({"role": "agent", "text": agent_text})
@@ -770,6 +868,7 @@ class ScenarioRunner:
                     agent_audio=agent_frames,
                     metrics=transport.metrics,
                     eval_results=eval_results,
+                    error=turn_error,
                 ))
 
                 # Generate next user message (unless this is the last turn)
@@ -865,11 +964,13 @@ class ScenarioRunner:
                     transport.metrics.stt_duration_ms = stt_timer.elapsed_ms
                     agent_text = transcript.text
                     logger.info("Agent said: %s", agent_text[:100])
+                    turn_error = ""
                 except Exception as e:
                     logger.error("Step %s failed: %s", step_label, e)
                     user_text = getattr(e, "_user_text", "") or f"[step {step_label} failed]"
                     agent_text = ""
                     agent_frames = []
+                    turn_error = str(e)[:300]
 
                 conversation.append({"role": "user", "text": user_text})
                 conversation.append({"role": "agent", "text": agent_text})
@@ -896,6 +997,7 @@ class ScenarioRunner:
                     agent_audio=agent_frames,
                     metrics=transport.metrics,
                     eval_results=eval_results,
+                    error=turn_error,
                 ))
 
         finally:
@@ -930,8 +1032,8 @@ class ScenarioRunner:
         """Run a list of evaluators and return results."""
         results: list[EvalResult] = []
         for expect in expects:
-            if self.skip_llm_judge and expect.type == "llm_judge":
-                logger.info("  [SKIP] llm_judge: skipped (--skip-llm-judge)")
+            if self.skip_llm_judge and expect.type in _LLM_EVALUATOR_TYPES:
+                logger.info("  [SKIP] %s: skipped (--skip-llm-judge)", expect.type)
                 continue
             try:
                 evaluator_cls = get_evaluator(expect.type)

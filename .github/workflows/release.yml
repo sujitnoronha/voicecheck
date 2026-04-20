@@ -1,0 +1,126 @@
+name: Release
+
+# Fires when you push a version tag (e.g. `git tag v0.1.0 && git push --tags`).
+# Publishes to PyPI via OIDC Trusted Publishing (no API token stored in secrets)
+# and pushes a Docker image to GitHub Container Registry.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  # ── 1. Smoke test — gate the release on a passing unit suite.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,dev]"
+
+      - name: Unit tests
+        run: pytest tests/unit/ -q
+
+      - name: Validate example YAMLs
+        run: |
+          for f in examples/industries/*.yaml; do
+            voicecheck validate "$f"
+          done
+
+  # ── 2. Build wheel + sdist.
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Verify wheel installs in a fresh env
+        run: |
+          python -m venv /tmp/verify
+          /tmp/verify/bin/pip install dist/*.whl
+          /tmp/verify/bin/voicecheck --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # ── 3. Publish to PyPI via Trusted Publishing.
+  # Requires one-time setup on pypi.org:
+  #   Settings → Publishing → Add a Trusted Publisher
+  #     Owner:       sujitnoronha
+  #     Repository:  voicecheck
+  #     Workflow:    release.yml
+  #     Environment: pypi
+  # Also create a matching "pypi" environment in GitHub repo settings.
+  publish-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/voicecheck
+    permissions:
+      id-token: write   # required for PyPI OIDC exchange
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ── 4. Build + push Docker image to GHCR.
+  publish-docker:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/sujitnoronha/voicecheck
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build + push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

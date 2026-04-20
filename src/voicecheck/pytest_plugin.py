@@ -49,13 +49,15 @@ def pytest_runtest_call(item: pytest.Item) -> None:
     if not scenario_path:
         pytest.fail("@pytest.mark.voicecheck requires a scenario file path")
 
+    # Echo transport is always available — zero deps.
+    import voicecheck.transports.echo  # noqa: F401
+
     # Ensure transport registrations — each is optional
     for _transport_mod in (
         "voicecheck.transports.livekit",
         "voicecheck.transports.daily",
         "voicecheck.transports.vapi",
         "voicecheck.transports.retell",
-        "voicecheck.transports.telephony",
     ):
         try:
             __import__(_transport_mod)
@@ -66,10 +68,20 @@ def pytest_runtest_call(item: pytest.Item) -> None:
     import voicecheck.evaluators.latency  # noqa: F401
     import voicecheck.evaluators.keyword  # noqa: F401
     import voicecheck.evaluators.turn_count  # noqa: F401
-    try:
-        import voicecheck.evaluators.llm_judge  # noqa: F401
-    except ImportError:
-        pass
+    for _eval_mod in (
+        "voicecheck.evaluators.llm_judge",
+        "voicecheck.evaluators.rubric_judge",
+        "voicecheck.evaluators.emotional_tone",
+        "voicecheck.evaluators.memory_recall",
+        "voicecheck.evaluators.character_break",
+        "voicecheck.evaluators.info_leakage",
+        "voicecheck.evaluators.fact_accuracy",
+        "voicecheck.evaluators.personality_consistency",
+    ):
+        try:
+            __import__(_eval_mod)
+        except ImportError:
+            pass
 
     from voicecheck.core.scenario import ScenarioRunner
 

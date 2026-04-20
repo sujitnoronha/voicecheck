@@ -34,6 +34,8 @@ def print_console_report(report: ScenarioReport, file: TextIO | None = None) -> 
         out.write(f"Turn {turn.turn_index + 1}: [{turn_status}]\n")
         out.write(f"  User: {turn.user_text}\n")
         out.write(f"  Agent: {turn.agent_text[:200]}\n")
+        if turn.error:
+            out.write(f"  Error: {turn.error}\n")
 
         # Timing breakdown
         timing_parts = [f"first_byte={m.first_byte_ms:.0f}ms", f"total={m.total_ms:.0f}ms"]
@@ -100,6 +102,7 @@ def write_json_report(report: ScenarioReport, path: str | Path) -> None:
         turn_data = {
             "turn_index": turn.turn_index,
             "passed": turn.passed,
+            "error": turn.error,
             "user_text": turn.user_text,
             "agent_text": turn.agent_text,
             "metrics": {

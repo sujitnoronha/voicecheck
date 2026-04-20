@@ -24,8 +24,7 @@ turns:
       - type: turn_count
         min_words: 3
       - type: keyword
-        required: []
-        forbidden: ["error", "exception"]
+        must_not_contain: ["error", "exception"]
 
   - user: "Tell me something interesting about yourself."
     expect:

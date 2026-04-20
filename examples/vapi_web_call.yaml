@@ -25,7 +25,7 @@ turns:
       - type: turn_count
         min_words: 3
       - type: keyword
-        forbidden: ["error", "undefined"]
+        must_not_contain: ["error", "undefined"]
 
   - user: "What services do you offer?"
     expect:

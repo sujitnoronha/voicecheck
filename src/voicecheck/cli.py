@@ -56,6 +56,9 @@ def _parse_duration(value: str) -> int:
 
 def _ensure_registrations() -> None:
     """Import modules that register transports and evaluators."""
+    # Echo transport is always available — zero deps, built-in dev transport.
+    import voicecheck.transports.echo  # noqa: F401
+
     # Transports — each is optional (depends on installed extras)
     for _transport_mod in (
         "voicecheck.transports.livekit",
@@ -76,6 +79,7 @@ def _ensure_registrations() -> None:
     # LLM-based evaluators — require openai or anthropic SDK
     for _eval_mod in (
         "voicecheck.evaluators.llm_judge",
+        "voicecheck.evaluators.rubric_judge",
         "voicecheck.evaluators.emotional_tone",
         "voicecheck.evaluators.memory_recall",
         "voicecheck.evaluators.character_break",

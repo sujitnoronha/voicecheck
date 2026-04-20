@@ -39,8 +39,11 @@ flow:
     expect:
       - type: turn_count
         min_words: 10
+      # Note: keyword evaluator does AND-matching across must_contain.
+      # If you need OR-matching ("any of these"), use a rubric_judge
+      # ad-hoc dimension with prompt_guidance describing the accept list.
       - type: keyword
-        must_contain_any: ["moon", "lunar", "crater", "space"]
+        must_not_contain: ["error", "sorry, I don't know"]
 
   - name: "follow-up"
     goal: "React with excitement and ask a deeper follow-up question about what the agent just said"
