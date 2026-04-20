@@ -36,3 +36,6 @@ voicecheck_dashboard.html
 # OS
 .DS_Store
 Thumbs.db
+
+# Local-only docs (not published)
+RELEASING.md

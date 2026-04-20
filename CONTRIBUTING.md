@@ -129,10 +129,6 @@ pytest -v
 5. Update README.md and docs if you've added user-facing features
 6. Submit a PR with a clear description of the changes
 
-## Releasing
-
-Maintainers cutting a new version — see [RELEASING.md](RELEASING.md).
-
 ## Reporting Issues
 
 Please use GitHub Issues and include:

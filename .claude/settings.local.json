@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:docs.pipecat.ai)",
+      "WebFetch(domain:docs.vapi.ai)",
+      "WebFetch(domain:docs.retellai.com)",
+      "WebFetch(domain:docs.cekura.ai)",
+      "WebFetch(domain:www.cekura.ai)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(pip list:*)",
+      "Bash(pip show:*)",
+      "Bash(PYTHONPATH=src:/tmp/vc_deps python -c \":*)",
+      "Bash(PYTHONPATH=src:/tmp/vc_deps python -m pytest tests/unit/test_audio_utils.py -v 2>&1)",
+      "Bash(PYTHONPATH=src:/tmp/vc_deps python -m pip install pytest pytest-asyncio -q)",
+      "Bash(PYTHONPATH=src:/tmp/vc_deps python -m pytest tests/unit/test_audio_utils.py -v)",
+      "Bash(PYTHONPATH=src:/tmp/vc_deps python -m pytest tests/unit/ -v --timeout=10 2>&1)",
+      "Bash(PYTHONPATH=src:/tmp/vc_deps python -m pytest tests/unit/ -v 2>&1)",
+      "Bash(PYTHONPATH=/tmp/vc_deps python -m ruff check src/voicecheck/audio/utils.py src/voicecheck/transports/websocket_base.py src/voicecheck/transports/daily.py src/voicecheck/transports/vapi.py src/voicecheck/transports/retell.py src/voicecheck/transports/telephony.py src/voicecheck/core/transport.py src/voicecheck/cli.py src/voicecheck/pytest_plugin.py)",
+      "Bash(PYTHONPATH=/tmp/vc_deps python -m ruff check src/voicecheck/transports/ src/voicecheck/audio/utils.py src/voicecheck/core/transport.py --select B904 --output-format json)",
+      "Bash(PYTHONPATH=/tmp/vc_deps python -m ruff check src/voicecheck/transports/ --select B904 --fix 2>&1)",
+      "Bash(PYTHONPATH=/tmp/vc_deps python -m ruff check src/voicecheck/transports/ --select B904 --fix --unsafe-fixes 2>&1)",
+      "Bash(PYTHONPATH=/tmp/vc_deps python -m ruff check src/voicecheck/audio/utils.py src/voicecheck/transports/websocket_base.py src/voicecheck/transports/daily.py src/voicecheck/transports/vapi.py src/voicecheck/transports/retell.py src/voicecheck/transports/telephony.py --select E,F,UP 2>&1)"
+    ]
+  }
+}
