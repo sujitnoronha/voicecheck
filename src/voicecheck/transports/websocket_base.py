@@ -136,9 +136,7 @@ class WebSocketTransport(Transport):
         try:
             import websockets
         except ImportError as exc:
-            raise ImportError(
-                "websockets not installed. Run: pip install websockets"
-            ) from exc
+            raise ImportError("websockets not installed. Run: pip install websockets") from exc
 
         self._config = config
         ws_url = await self._get_ws_url(config)

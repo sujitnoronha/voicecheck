@@ -96,9 +96,7 @@ def pcm_to_mulaw(pcm_data: bytes) -> bytes:
     result = bytearray(num_samples)
 
     for i in range(num_samples):
-        sample = int.from_bytes(
-            pcm_data[i * 2 : i * 2 + 2], byteorder="little", signed=True
-        )
+        sample = int.from_bytes(pcm_data[i * 2 : i * 2 + 2], byteorder="little", signed=True)
 
         # Get sign bit
         sign = 0
@@ -178,12 +176,14 @@ def generate_silence(
 
     frames = []
     for _ in range(total_frames):
-        frames.append(AudioFrame(
-            data=b"\x00" * bytes_per_frame,
-            sample_rate=sample_rate,
-            num_channels=num_channels,
-            samples_per_channel=samples_per_frame,
-        ))
+        frames.append(
+            AudioFrame(
+                data=b"\x00" * bytes_per_frame,
+                sample_rate=sample_rate,
+                num_channels=num_channels,
+                samples_per_channel=samples_per_frame,
+            )
+        )
     return frames
 
 

@@ -7,7 +7,7 @@ import pytest
 
 from voicecheck.audio.tts import _pcm_to_frames
 from voicecheck.audio.utils import resample_pcm as _resample_pcm
-from voicecheck.core.types import AudioFrame, TranscriptSegment
+from voicecheck.core.types import AudioFrame
 
 
 class TestPcmToFrames:
@@ -168,9 +168,7 @@ class TestOpenAISTT:
 
         with patch("openai.AsyncOpenAI") as MockClient:
             mock_client = MagicMock()
-            mock_client.audio.transcriptions.create = AsyncMock(
-                return_value=mock_transcript
-            )
+            mock_client.audio.transcriptions.create = AsyncMock(return_value=mock_transcript)
             MockClient.return_value = mock_client
 
             result = await provider.transcribe(test_frames)

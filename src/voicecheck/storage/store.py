@@ -100,7 +100,9 @@ class ResultStore:
         now = datetime.now(timezone.utc).isoformat()
 
         # Compute averages
-        latencies_fb = [t.metrics.first_byte_ms for t in report.turns if t.metrics.first_byte_ms > 0]
+        latencies_fb = [
+            t.metrics.first_byte_ms for t in report.turns if t.metrics.first_byte_ms > 0
+        ]
         latencies_total = [t.metrics.total_ms for t in report.turns if t.metrics.total_ms > 0]
         avg_fb = sum(latencies_fb) / len(latencies_fb) if latencies_fb else 0.0
         avg_total = sum(latencies_total) / len(latencies_total) if latencies_total else 0.0
@@ -199,9 +201,7 @@ class ResultStore:
             result["conversation_eval"] = json.loads(result["conversation_eval"])
         return result
 
-    def get_scenario_history(
-        self, scenario_name: str, limit: int = 100
-    ) -> list[dict[str, Any]]:
+    def get_scenario_history(self, scenario_name: str, limit: int = 100) -> list[dict[str, Any]]:
         """Get historical runs for a scenario (for trend charts)."""
         conn = self._get_conn()
         rows = conn.execute(

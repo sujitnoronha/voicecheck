@@ -24,15 +24,11 @@ class TurnCountEvaluator(Evaluator):
 
         if word_count < self.min_words:
             passed = False
-            reasons.append(
-                f"Agent response too short: {word_count} words (min {self.min_words})"
-            )
+            reasons.append(f"Agent response too short: {word_count} words (min {self.min_words})")
 
         if self.max_words > 0 and word_count > self.max_words:
             passed = False
-            reasons.append(
-                f"Agent response too long: {word_count} words (max {self.max_words})"
-            )
+            reasons.append(f"Agent response too long: {word_count} words (max {self.max_words})")
 
         if not reasons:
             reasons.append(f"Response length OK ({word_count} words)")

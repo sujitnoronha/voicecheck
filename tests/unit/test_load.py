@@ -9,7 +9,7 @@ from voicecheck.core.load import (
     build_load_summary,
 )
 from voicecheck.core.scenario import ScenarioReport
-from voicecheck.core.types import TransportMetrics, TurnResult, EvalResult
+from voicecheck.core.types import EvalResult, TransportMetrics, TurnResult
 
 
 def _make_metrics(first_byte_ms: float = 500, total_ms: float = 2000) -> TransportMetrics:
@@ -20,19 +20,26 @@ def _make_metrics(first_byte_ms: float = 500, total_ms: float = 2000) -> Transpo
     return m
 
 
-def _make_report(passed: bool = True, num_turns: int = 2,
-                 first_byte_ms: float = 500) -> ScenarioReport:
+def _make_report(
+    passed: bool = True, num_turns: int = 2, first_byte_ms: float = 500
+) -> ScenarioReport:
     turns = []
     for i in range(num_turns):
-        turns.append(TurnResult(
-            turn_index=i,
-            user_text=f"Turn {i}",
-            agent_text=f"Response {i}",
-            metrics=_make_metrics(first_byte_ms=first_byte_ms),
-            eval_results=[EvalResult(
-                evaluator_type="test", passed=passed, score=1.0 if passed else 0.0,
-            )],
-        ))
+        turns.append(
+            TurnResult(
+                turn_index=i,
+                user_text=f"Turn {i}",
+                agent_text=f"Response {i}",
+                metrics=_make_metrics(first_byte_ms=first_byte_ms),
+                eval_results=[
+                    EvalResult(
+                        evaluator_type="test",
+                        passed=passed,
+                        score=1.0 if passed else 0.0,
+                    )
+                ],
+            )
+        )
     return ScenarioReport(scenario_name="test", turns=turns)
 
 
@@ -84,8 +91,7 @@ class TestPercentile:
 class TestBuildLoadSummary:
     def test_all_passing(self):
         results = [
-            LoadTestResult(session_id=i, report=_make_report(passed=True),
-                           start_ts=0, end_ts=5)
+            LoadTestResult(session_id=i, report=_make_report(passed=True), start_ts=0, end_ts=5)
             for i in range(5)
         ]
         summary = build_load_summary(results, duration=10.0)
@@ -108,10 +114,8 @@ class TestBuildLoadSummary:
 
     def test_latency_collection(self):
         results = [
-            LoadTestResult(session_id=0,
-                           report=_make_report(passed=True, first_byte_ms=100)),
-            LoadTestResult(session_id=1,
-                           report=_make_report(passed=True, first_byte_ms=300)),
+            LoadTestResult(session_id=0, report=_make_report(passed=True, first_byte_ms=100)),
+            LoadTestResult(session_id=1, report=_make_report(passed=True, first_byte_ms=300)),
         ]
         summary = build_load_summary(results, duration=5.0)
         assert len(summary.all_first_byte_ms) == 4  # 2 reports * 2 turns each
@@ -124,19 +128,14 @@ class TestBuildLoadSummary:
         assert summary.avg_first_byte_ms == 0.0
 
     def test_throughput(self):
-        results = [
-            LoadTestResult(session_id=i, report=_make_report())
-            for i in range(10)
-        ]
+        results = [LoadTestResult(session_id=i, report=_make_report()) for i in range(10)]
         summary = build_load_summary(results, duration=60.0)
         assert summary.throughput_per_min == pytest.approx(10.0)
 
     def test_turn_counts(self):
         results = [
-            LoadTestResult(session_id=0,
-                           report=_make_report(passed=True, num_turns=3)),
-            LoadTestResult(session_id=1,
-                           report=_make_report(passed=False, num_turns=2)),
+            LoadTestResult(session_id=0, report=_make_report(passed=True, num_turns=3)),
+            LoadTestResult(session_id=1, report=_make_report(passed=False, num_turns=2)),
         ]
         summary = build_load_summary(results, duration=5.0)
         assert summary.total_turns == 5
@@ -153,8 +152,9 @@ class TestBuildLoadSummary:
 
     def test_percentile_properties(self):
         results = [
-            LoadTestResult(session_id=i,
-                           report=_make_report(passed=True, first_byte_ms=100 * (i + 1)))
+            LoadTestResult(
+                session_id=i, report=_make_report(passed=True, first_byte_ms=100 * (i + 1))
+            )
             for i in range(10)
         ]
         summary = build_load_summary(results, duration=10.0)
@@ -165,14 +165,24 @@ class TestBuildLoadSummary:
 
 class TestLoadTestSummaryProperties:
     def test_pass_rate_zero_sessions(self):
-        s = LoadTestSummary(concurrent_sessions=0, sessions_completed=0,
-                            sessions_failed=0, sessions_errored=0,
-                            total_turns=0, passed_turns=0)
+        s = LoadTestSummary(
+            concurrent_sessions=0,
+            sessions_completed=0,
+            sessions_failed=0,
+            sessions_errored=0,
+            total_turns=0,
+            passed_turns=0,
+        )
         assert s.pass_rate == 0.0
 
     def test_throughput_zero_duration(self):
-        s = LoadTestSummary(concurrent_sessions=5, sessions_completed=5,
-                            sessions_failed=0, sessions_errored=0,
-                            total_turns=10, passed_turns=10,
-                            duration_seconds=0.0)
+        s = LoadTestSummary(
+            concurrent_sessions=5,
+            sessions_completed=5,
+            sessions_failed=0,
+            sessions_errored=0,
+            total_turns=10,
+            passed_turns=10,
+            duration_seconds=0.0,
+        )
         assert s.throughput_per_min == 0.0

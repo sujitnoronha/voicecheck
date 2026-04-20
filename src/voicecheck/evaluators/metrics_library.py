@@ -200,15 +200,11 @@ def resolve_dimension(
     if isinstance(spec, str):
         if spec not in COMMERCIAL_METRICS:
             available = ", ".join(sorted(COMMERCIAL_METRICS))
-            raise ValueError(
-                f"Unknown metric preset: {spec!r}. Available: {available}"
-            )
+            raise ValueError(f"Unknown metric preset: {spec!r}. Available: {available}")
         return COMMERCIAL_METRICS[spec], {}
 
     if not isinstance(spec, dict):
-        raise ValueError(
-            f"Dimension spec must be a string or dict, got {type(spec).__name__}"
-        )
+        raise ValueError(f"Dimension spec must be a string or dict, got {type(spec).__name__}")
 
     name = spec.get("name")
     if not name:
@@ -234,9 +230,7 @@ def resolve_dimension(
     description = spec.get("description")
     prompt_guidance = spec.get("prompt_guidance", description)
     if not description:
-        raise ValueError(
-            f"Ad-hoc dimension {name!r} requires a 'description' field"
-        )
+        raise ValueError(f"Ad-hoc dimension {name!r} requires a 'description' field")
 
     dim = Dimension(
         name=name,

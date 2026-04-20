@@ -42,21 +42,33 @@ def create_app(db_path: str | None = None) -> FastAPI:
 
     @app.get("/runs", response_class=HTMLResponse)
     async def all_runs_page(request: Request):
-        return templates.TemplateResponse(request, "runs.html", {
-            "scenario_name": None,
-        })
+        return templates.TemplateResponse(
+            request,
+            "runs.html",
+            {
+                "scenario_name": None,
+            },
+        )
 
     @app.get("/scenario/{name:path}", response_class=HTMLResponse)
     async def scenario_page(request: Request, name: str):
-        return templates.TemplateResponse(request, "runs.html", {
-            "scenario_name": name,
-        })
+        return templates.TemplateResponse(
+            request,
+            "runs.html",
+            {
+                "scenario_name": name,
+            },
+        )
 
     @app.get("/run/{run_id}", response_class=HTMLResponse)
     async def run_detail_page(request: Request, run_id: str):
-        return templates.TemplateResponse(request, "run_detail.html", {
-            "run_id": run_id,
-        })
+        return templates.TemplateResponse(
+            request,
+            "run_detail.html",
+            {
+                "run_id": run_id,
+            },
+        )
 
     @app.get("/compare", response_class=HTMLResponse)
     async def compare_page(request: Request):

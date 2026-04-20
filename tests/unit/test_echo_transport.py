@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from voicecheck.core.transport import get_transport
 import voicecheck.transports.echo  # noqa: F401  # ensure registration
+from voicecheck.core.transport import get_transport
 from voicecheck.transports.echo import EchoTransport
 
 
@@ -30,11 +30,13 @@ class TestEchoTransport:
     @pytest.mark.asyncio
     async def test_receive_emits_silent_frames_when_not_synthesizing(self):
         transport = EchoTransport()
-        await transport.connect({
-            "response_text": "ignored",
-            "synthesize": False,
-            "first_byte_delay_ms": 0,
-        })
+        await transport.connect(
+            {
+                "response_text": "ignored",
+                "synthesize": False,
+                "first_byte_delay_ms": 0,
+            }
+        )
         await transport.send_audio([])
         frames = await transport.receive_audio()
         assert len(frames) > 0
@@ -46,10 +48,12 @@ class TestEchoTransport:
     @pytest.mark.asyncio
     async def test_empty_response_text_defaults_to_silence(self):
         transport = EchoTransport()
-        await transport.connect({
-            "response_text": "",
-            "first_byte_delay_ms": 0,
-        })
+        await transport.connect(
+            {
+                "response_text": "",
+                "first_byte_delay_ms": 0,
+            }
+        )
         await transport.send_audio([])
         frames = await transport.receive_audio()
         # Should fall back to silent PCM without crashing.
@@ -59,11 +63,14 @@ class TestEchoTransport:
     @pytest.mark.asyncio
     async def test_first_byte_delay_applied(self):
         import time
+
         transport = EchoTransport()
-        await transport.connect({
-            "response_text": "",
-            "first_byte_delay_ms": 100,
-        })
+        await transport.connect(
+            {
+                "response_text": "",
+                "first_byte_delay_ms": 100,
+            }
+        )
         t0 = time.monotonic()
         await transport.send_audio([])
         await transport.receive_audio()

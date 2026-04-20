@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import struct
 import wave
 from pathlib import Path
 from typing import TextIO
@@ -22,11 +21,11 @@ def print_console_report(report: ScenarioReport, file: TextIO | None = None) -> 
     out = file or sys.stdout
     status = "PASSED" if report.passed else "FAILED"
 
-    out.write(f"\n{'='*60}\n")
+    out.write(f"\n{'=' * 60}\n")
     out.write(f"  VoiceCheck Report: {report.scenario_name}\n")
     out.write(f"  Status: {status}\n")
     out.write(f"  Turns: {report.passed_turns}/{report.total_turns} passed\n")
-    out.write(f"{'='*60}\n\n")
+    out.write(f"{'=' * 60}\n\n")
 
     for turn in report.turns:
         m = turn.metrics
@@ -60,8 +59,7 @@ def print_console_report(report: ScenarioReport, file: TextIO | None = None) -> 
         for result in turn.eval_results:
             icon = "+" if result.passed else "x"
             out.write(
-                f"  [{icon}] {result.evaluator_type}: "
-                f"{result.reason} (score={result.score:.2f})\n"
+                f"  [{icon}] {result.evaluator_type}: {result.reason} (score={result.score:.2f})\n"
             )
         out.write("\n")
 
@@ -77,9 +75,9 @@ def print_console_report(report: ScenarioReport, file: TextIO | None = None) -> 
             out.write(f"  - {criterion}: {score:.2f} — {reason}\n")
         out.write("\n")
 
-    out.write(f"{'='*60}\n")
+    out.write(f"{'=' * 60}\n")
     out.write(f"Result: {status}\n")
-    out.write(f"{'='*60}\n")
+    out.write(f"{'=' * 60}\n")
 
 
 def write_json_report(report: ScenarioReport, path: str | Path) -> None:

@@ -106,12 +106,14 @@ class DailyTransport(Transport):
         self._call_client = daily.CallClient(event_handler=event_handler)
 
         # Subscribe to remote microphone tracks, ignore camera
-        self._call_client.update_subscription_profiles({
-            "base": {
-                "camera": "unsubscribed",
-                "microphone": "subscribed",
+        self._call_client.update_subscription_profiles(
+            {
+                "base": {
+                    "camera": "unsubscribed",
+                    "microphone": "subscribed",
+                }
             }
-        })
+        )
 
         # Join the room
         logger.info("Connecting to Daily room at %s (mode=%s)", room_url, mode)
@@ -138,9 +140,7 @@ class DailyTransport(Transport):
 
         # Check if agent is already in the room (race-condition-safe).
         # participants() returns a dict keyed by participant ID.
-        remote_participants = await asyncio.to_thread(
-            self._call_client.participants
-        )
+        remote_participants = await asyncio.to_thread(self._call_client.participants)
         for pid, info in remote_participants.items():
             if pid == "local":
                 continue
@@ -154,14 +154,10 @@ class DailyTransport(Transport):
         # Wait for agent participant to be present before sending audio
         agent_timeout = config.get("agent_connect_timeout", 15.0)
         try:
-            await asyncio.wait_for(
-                self._agent_participant_ready.wait(), timeout=agent_timeout
-            )
+            await asyncio.wait_for(self._agent_participant_ready.wait(), timeout=agent_timeout)
             logger.info("Agent is present in the room")
         except asyncio.TimeoutError:
-            logger.warning(
-                "Agent did not join within %.0fs — proceeding anyway", agent_timeout
-            )
+            logger.warning("Agent did not join within %.0fs — proceeding anyway", agent_timeout)
 
         logger.info("Published audio track (sample_rate=%d)", sample_rate)
 
@@ -185,9 +181,7 @@ class DailyTransport(Transport):
         for frame in frames:
             # VirtualMicrophoneDevice.write_frames() expects raw bytes of
             # 16-bit signed little-endian PCM audio.
-            await asyncio.to_thread(
-                self._mic_device.write_frames, frame.data
-            )
+            await asyncio.to_thread(self._mic_device.write_frames, frame.data)
 
         self._metrics.send_end_ts = time.monotonic()
         logger.info(
@@ -415,9 +409,7 @@ class DailyTransport(Transport):
                     is_publishing = info.get("isPublishingMicrophone", False)
                     if is_publishing and transport._agent_track is None:
                         user_name = info.get("userName", pid)
-                        logger.info(
-                            "Agent audio track available from %s", user_name
-                        )
+                        logger.info("Agent audio track available from %s", user_name)
                         transport._agent_track = pid
 
             def on_participant_left(self, participant: dict[str, Any], reason: str) -> None:
@@ -428,17 +420,13 @@ class DailyTransport(Transport):
 
                 if not is_local:
                     user_name = info.get("userName", pid)
-                    logger.info(
-                        "Participant left: %s (reason=%s)", user_name, reason
-                    )
+                    logger.info("Participant left: %s (reason=%s)", user_name, reason)
                     if transport._agent_track == pid:
                         transport._agent_track = None
 
         return _Handler()
 
-    async def _resolve_connection(
-        self, mode: str, config: dict
-    ) -> tuple[str, str | None]:
+    async def _resolve_connection(self, mode: str, config: dict) -> tuple[str, str | None]:
         """Resolve room URL and meeting token based on connection mode.
 
         Args:
@@ -470,13 +458,9 @@ class DailyTransport(Transport):
             logger.info("Using pre-made token for room: %s", room_url)
             return room_url, meeting_token
         else:
-            raise ValueError(
-                f"Unknown Daily mode: {mode!r}. Use api_key|room_url|token"
-            )
+            raise ValueError(f"Unknown Daily mode: {mode!r}. Use api_key|room_url|token")
 
-    async def _create_room_with_api_key(
-        self, config: dict
-    ) -> tuple[str, str | None]:
+    async def _create_room_with_api_key(self, config: dict) -> tuple[str, str | None]:
         """Create a Daily room via the REST API and return (room_url, token).
 
         Uses the Daily REST API (https://api.daily.co/v1/rooms) to create
@@ -496,9 +480,7 @@ class DailyTransport(Transport):
         try:
             import httpx
         except ImportError:
-            raise ImportError(
-                "httpx not installed. Run: pip install httpx"
-            )
+            raise ImportError("httpx not installed. Run: pip install httpx")
 
         api_key = config["api_key"]
         room_name = config.get("room_name", f"voicecheck-{int(time.time())}")
@@ -556,18 +538,13 @@ class DailyTransport(Transport):
                 )
                 token_resp.raise_for_status()
                 meeting_token = token_resp.json()["token"]
-                logger.info(
-                    "Generated meeting token for room %s", room_name
-                )
+                logger.info("Generated meeting token for room %s", room_name)
 
         except httpx.TimeoutException:
-            raise ConnectionError(
-                f"Daily API request timed out while creating room '{room_name}'"
-            )
+            raise ConnectionError(f"Daily API request timed out while creating room '{room_name}'")
         except httpx.HTTPStatusError as e:
             raise ConnectionError(
-                f"Daily API returned HTTP {e.response.status_code}: "
-                f"{e.response.text[:200]}"
+                f"Daily API returned HTTP {e.response.status_code}: {e.response.text[:200]}"
             )
 
         return room_url, meeting_token

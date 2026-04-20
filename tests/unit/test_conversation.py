@@ -13,7 +13,6 @@ from voicecheck.conversation.engine import (
     _build_persona_system_prompt,
 )
 
-
 # ── PersonaConfig tests ─────────────────────────────────────────
 
 
@@ -142,9 +141,7 @@ class TestConversationEngine:
         engine = ConversationEngine(cfg)
         engine._messages = [{"role": "assistant", "content": "Hi!"}]
 
-        mock_create = AsyncMock(
-            return_value=_mock_openai_response("That's so cool! Tell me more!")
-        )
+        mock_create = AsyncMock(return_value=_mock_openai_response("That's so cool! Tell me more!"))
 
         with patch("openai.AsyncOpenAI", create=True) as MockClient:
             mock_client = MagicMock()
@@ -289,9 +286,7 @@ class TestConversationEngineGuided:
         cfg = PersonaConfig(name="Emma", age=7)
         engine = ConversationEngine(cfg)
 
-        mock_create = AsyncMock(
-            return_value=_mock_openai_response("Hi! Do you know about stars?")
-        )
+        mock_create = AsyncMock(return_value=_mock_openai_response("Hi! Do you know about stars?"))
 
         with patch("openai.AsyncOpenAI", create=True) as MockClient:
             mock_client = MagicMock()

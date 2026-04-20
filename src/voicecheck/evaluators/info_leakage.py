@@ -26,7 +26,6 @@ import re
 
 from voicecheck.core.evaluator import Evaluator, register_evaluator
 from voicecheck.core.types import EvalContext, EvalResult
-
 from voicecheck.evaluators._llm_service import (
     build_conversation_context,
     call_llm_judge,

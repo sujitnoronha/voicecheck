@@ -15,7 +15,7 @@ def _make_report(name: str = "test-scenario", passed: bool = True) -> ScenarioRe
     metrics = TransportMetrics()
     metrics.send_end_ts = 1000.0
     metrics.first_byte_ts = 1001.5  # 1500ms
-    metrics.last_byte_ts = 1003.0   # 3000ms
+    metrics.last_byte_ts = 1003.0  # 3000ms
 
     turn = TurnResult(
         turn_index=0,

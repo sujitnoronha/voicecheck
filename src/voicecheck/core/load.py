@@ -11,9 +11,8 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
-from voicecheck.core.scenario import ScenarioRunner, ScenarioReport, load_scenario
+from voicecheck.core.scenario import ScenarioReport, ScenarioRunner, load_scenario
 
 logger = logging.getLogger("voicecheck.core.load")
 
@@ -62,7 +61,11 @@ class LoadTestSummary:
 
     @property
     def avg_first_byte_ms(self) -> float:
-        return sum(self.all_first_byte_ms) / len(self.all_first_byte_ms) if self.all_first_byte_ms else 0.0
+        return (
+            sum(self.all_first_byte_ms) / len(self.all_first_byte_ms)
+            if self.all_first_byte_ms
+            else 0.0
+        )
 
     @property
     def p50_first_byte_ms(self) -> float:
@@ -123,14 +126,18 @@ async def run_concurrent(
                 runner = ScenarioRunner(scenario, skip_llm_judge=skip_llm_judge)
                 report = await runner.run()
                 return LoadTestResult(
-                    session_id=session_id, report=report,
-                    start_ts=s, end_ts=time.monotonic(),
+                    session_id=session_id,
+                    report=report,
+                    start_ts=s,
+                    end_ts=time.monotonic(),
                 )
             except Exception as e:
                 logger.error("Session %d error: %s", session_id, e)
                 return LoadTestResult(
-                    session_id=session_id, error=str(e),
-                    start_ts=s, end_ts=time.monotonic(),
+                    session_id=session_id,
+                    error=str(e),
+                    start_ts=s,
+                    end_ts=time.monotonic(),
                 )
 
     results = await asyncio.gather(*[_run_session(i) for i in range(concurrent)])
@@ -192,8 +199,12 @@ def print_load_summary(summary: LoadTestSummary) -> None:
 
     # Session results
     passed_style = click.style(str(summary.sessions_completed), fg="green")
-    failed_style = click.style(str(summary.sessions_failed), fg="red") if summary.sessions_failed else "0"
-    error_style = click.style(str(summary.sessions_errored), fg="yellow") if summary.sessions_errored else "0"
+    failed_style = (
+        click.style(str(summary.sessions_failed), fg="red") if summary.sessions_failed else "0"
+    )
+    error_style = (
+        click.style(str(summary.sessions_errored), fg="yellow") if summary.sessions_errored else "0"
+    )
 
     click.echo(f"  Passed: {passed_style}  Failed: {failed_style}  Errors: {error_style}")
     click.echo(f"  Pass rate: {summary.pass_rate:.0f}%")
@@ -203,11 +214,13 @@ def print_load_summary(summary: LoadTestSummary) -> None:
 
     # Latency
     if summary.all_first_byte_ms:
-        click.echo(f"\n  First Byte Latency:")
-        click.echo(f"    avg={summary.avg_first_byte_ms:.0f}ms  "
-                    f"p50={summary.p50_first_byte_ms:.0f}ms  "
-                    f"p95={summary.p95_first_byte_ms:.0f}ms  "
-                    f"p99={summary.p99_first_byte_ms:.0f}ms")
+        click.echo("\n  First Byte Latency:")
+        click.echo(
+            f"    avg={summary.avg_first_byte_ms:.0f}ms  "
+            f"p50={summary.p50_first_byte_ms:.0f}ms  "
+            f"p95={summary.p95_first_byte_ms:.0f}ms  "
+            f"p99={summary.p99_first_byte_ms:.0f}ms"
+        )
 
     # Per-session table
     click.echo(f"\n  {'Session':<10} {'Status':<10} {'Turns':<12} {'Duration':<10}")

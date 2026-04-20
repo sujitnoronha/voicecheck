@@ -2,8 +2,6 @@
 
 import struct
 
-import pytest
-
 from voicecheck.audio.degradation import (
     add_gaussian_noise,
     apply_degradation,
@@ -15,10 +13,15 @@ from voicecheck.audio.utils import compute_rms
 from voicecheck.core.types import AudioFrame
 
 
-def _make_tone(frequency: float = 440, duration_s: float = 0.1,
-               sample_rate: int = 16000, amplitude: int = 10000) -> bytes:
+def _make_tone(
+    frequency: float = 440,
+    duration_s: float = 0.1,
+    sample_rate: int = 16000,
+    amplitude: int = 10000,
+) -> bytes:
     """Generate a sine wave tone as 16-bit PCM."""
     import math
+
     num_samples = int(sample_rate * duration_s)
     samples = []
     for i in range(num_samples):
@@ -27,18 +30,23 @@ def _make_tone(frequency: float = 440, duration_s: float = 0.1,
     return struct.pack(f"<{num_samples}h", *samples)
 
 
-def _make_frames(pcm_data: bytes, sample_rate: int = 16000,
-                 frame_duration_ms: int = 20) -> list[AudioFrame]:
+def _make_frames(
+    pcm_data: bytes, sample_rate: int = 16000, frame_duration_ms: int = 20
+) -> list[AudioFrame]:
     """Split PCM data into AudioFrames."""
     bytes_per_frame = int(sample_rate * frame_duration_ms / 1000) * 2
     frames = []
     for i in range(0, len(pcm_data), bytes_per_frame):
-        chunk = pcm_data[i:i + bytes_per_frame]
+        chunk = pcm_data[i : i + bytes_per_frame]
         if len(chunk) < bytes_per_frame:
             chunk += b"\x00" * (bytes_per_frame - len(chunk))
-        frames.append(AudioFrame(
-            data=chunk, sample_rate=sample_rate, num_channels=1,
-        ))
+        frames.append(
+            AudioFrame(
+                data=chunk,
+                sample_rate=sample_rate,
+                num_channels=1,
+            )
+        )
     return frames
 
 
@@ -115,7 +123,7 @@ class TestSimulatePacketLoss:
         frames = _make_frames(_make_tone())
         result = simulate_packet_loss(frames, loss_pct=0)
         assert len(result) == len(frames)
-        for orig, res in zip(frames, result):
+        for orig, res in zip(frames, result, strict=False):
             assert orig.data == res.data
 
     def test_full_loss(self):
@@ -128,7 +136,7 @@ class TestSimulatePacketLoss:
         frames = _make_frames(_make_tone())
         result = simulate_packet_loss(frames, loss_pct=50)
         assert len(result) == len(frames)
-        for orig, res in zip(frames, result):
+        for orig, res in zip(frames, result, strict=False):
             assert len(res.data) == len(orig.data)
             assert res.sample_rate == orig.sample_rate
 
@@ -176,14 +184,14 @@ class TestApplyDegradation:
         frames = _make_frames(_make_tone())
         result = apply_degradation(frames)
         assert len(result) == len(frames)
-        for orig, res in zip(frames, result):
+        for orig, res in zip(frames, result, strict=False):
             assert orig.data == res.data
 
     def test_noise_only(self):
         frames = _make_frames(_make_tone())
         result = apply_degradation(frames, noise_snr_db=10)
         assert len(result) == len(frames)
-        assert any(r.data != o.data for r, o in zip(result, frames))
+        assert any(r.data != o.data for r, o in zip(result, frames, strict=False))
 
     def test_bandwidth_narrowband(self):
         frames = _make_frames(_make_tone(frequency=6000))
@@ -201,7 +209,7 @@ class TestApplyDegradation:
     def test_codec_mulaw(self):
         frames = _make_frames(_make_tone())
         result = apply_degradation(frames, codec="mulaw")
-        assert any(r.data != o.data for r, o in zip(result, frames))
+        assert any(r.data != o.data for r, o in zip(result, frames, strict=False))
 
     def test_packet_loss(self):
         frames = _make_frames(_make_tone(duration_s=1.0))
@@ -233,7 +241,7 @@ class TestApplyDegradation:
 def _rms_diff(a: bytes, b: bytes) -> float:
     """Compute RMS of the difference between two PCM signals."""
     n = len(a) // 2
-    sa = struct.unpack(f"<{n}h", a[:n * 2])
-    sb = struct.unpack(f"<{n}h", b[:n * 2])
-    diff_sq = sum((x - y) ** 2 for x, y in zip(sa, sb))
+    sa = struct.unpack(f"<{n}h", a[: n * 2])
+    sb = struct.unpack(f"<{n}h", b[: n * 2])
+    diff_sq = sum((x - y) ** 2 for x, y in zip(sa, sb, strict=False))
     return (diff_sq / n) ** 0.5 if n else 0.0

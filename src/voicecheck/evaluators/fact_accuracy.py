@@ -21,7 +21,6 @@ import logging
 
 from voicecheck.core.evaluator import Evaluator, register_evaluator
 from voicecheck.core.types import EvalContext, EvalResult
-
 from voicecheck.evaluators._llm_service import (
     build_conversation_context,
     call_llm_judge,
@@ -93,9 +92,7 @@ class FactAccuracyEvaluator(Evaluator):
             else "(no known facts provided)"
         )
         false_section = (
-            "\n".join(f"- {f}" for f in self.false_facts)
-            if self.false_facts
-            else "(none)"
+            "\n".join(f"- {f}" for f in self.false_facts) if self.false_facts else "(none)"
         )
 
         user_prompt = _JUDGE_USER.format(

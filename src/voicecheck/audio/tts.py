@@ -71,9 +71,7 @@ class EdgeTTSProvider(TTSProvider):
         try:
             import edge_tts
         except ImportError:
-            raise ImportError(
-                "edge-tts not installed. Run: pip install voicecheck[tts]"
-            )
+            raise ImportError("edge-tts not installed. Run: pip install voicecheck[tts]")
 
         communicate = edge_tts.Communicate(text, self.voice)
 
@@ -122,9 +120,7 @@ class OpenAITTSProvider(TTSProvider):
             try:
                 from openai import AsyncOpenAI
             except ImportError:
-                raise ImportError(
-                    "openai not installed. Run: pip install voicecheck[llm]"
-                )
+                raise ImportError("openai not installed. Run: pip install voicecheck[llm]")
             self._client = AsyncOpenAI()
 
         client = self._client

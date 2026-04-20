@@ -45,9 +45,7 @@ class LiveKitTransport(Transport):
         try:
             from livekit import rtc
         except ImportError:
-            raise ImportError(
-                "LiveKit SDK not installed. Run: pip install voicecheck[livekit]"
-            )
+            raise ImportError("LiveKit SDK not installed. Run: pip install voicecheck[livekit]")
 
         self._config = config
         self._rtc = rtc
@@ -66,13 +64,9 @@ class LiveKitTransport(Transport):
 
         # Listen for agent audio track subscriptions
         @self._room.on("track_subscribed")
-        def _on_track_subscribed(
-            track: Any, publication: Any, participant: Any
-        ) -> None:
+        def _on_track_subscribed(track: Any, publication: Any, participant: Any) -> None:
             if track.kind == rtc.TrackKind.KIND_AUDIO:
-                logger.info(
-                    "Agent audio track subscribed from %s", participant.identity
-                )
+                logger.info("Agent audio track subscribed from %s", participant.identity)
                 self._agent_track = track
 
         logger.info("Connecting to LiveKit room at %s (mode=%s)", url, mode)
@@ -97,22 +91,16 @@ class LiveKitTransport(Transport):
         )
         options = rtc.TrackPublishOptions()
         options.source = rtc.TrackSource.SOURCE_MICROPHONE
-        await self._room.local_participant.publish_track(
-            self._audio_track, options
-        )
+        await self._room.local_participant.publish_track(self._audio_track, options)
         logger.info("Published audio track (sample_rate=%d)", sample_rate)
 
         # Wait for agent participant to be present before sending audio
         agent_timeout = config.get("agent_connect_timeout", 15.0)
         try:
-            await asyncio.wait_for(
-                self._agent_participant_ready.wait(), timeout=agent_timeout
-            )
+            await asyncio.wait_for(self._agent_participant_ready.wait(), timeout=agent_timeout)
             logger.info("Agent is present in the room")
         except asyncio.TimeoutError:
-            logger.warning(
-                "Agent did not join within %.0fs — proceeding anyway", agent_timeout
-            )
+            logger.warning("Agent did not join within %.0fs — proceeding anyway", agent_timeout)
 
     async def send_audio(self, frames: list[AudioFrame]) -> None:
         """Send audio frames to the room (simulated user speech)."""
@@ -334,9 +322,7 @@ class LiveKitTransport(Transport):
 
         return self._agent_track
 
-    async def _resolve_connection(
-        self, mode: str, config: dict
-    ) -> tuple[str, str]:
+    async def _resolve_connection(self, mode: str, config: dict) -> tuple[str, str]:
         """Resolve URL and token based on connection mode."""
         if mode == "direct":
             return self._direct_token(config)
@@ -357,9 +343,7 @@ class LiveKitTransport(Transport):
                 VideoGrants,
             )
         except ImportError:
-            raise ImportError(
-                "livekit-api not installed. Run: pip install voicecheck[livekit]"
-            )
+            raise ImportError("livekit-api not installed. Run: pip install voicecheck[livekit]")
 
         url = config["url"]
         api_key = config["api_key"]
@@ -417,9 +401,7 @@ class LiveKitTransport(Transport):
         try:
             import httpx
         except ImportError:
-            raise ImportError(
-                "httpx not installed. Run: pip install httpx"
-            )
+            raise ImportError("httpx not installed. Run: pip install httpx")
 
         token_url = config["token_url"]
         request_body = config.get("token_request", {})
@@ -432,15 +414,11 @@ class LiveKitTransport(Transport):
 
         try:
             async with httpx.AsyncClient(timeout=request_timeout) as client:
-                resp = await client.post(
-                    token_url, json=request_body, headers=headers
-                )
+                resp = await client.post(token_url, json=request_body, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
         except httpx.TimeoutException:
-            raise ConnectionError(
-                f"Token server timed out after {request_timeout}s: {token_url}"
-            )
+            raise ConnectionError(f"Token server timed out after {request_timeout}s: {token_url}")
         except httpx.HTTPStatusError as e:
             raise ConnectionError(
                 f"Token server returned HTTP {e.response.status_code}: {token_url}"

@@ -31,7 +31,9 @@ class Transport(ABC):
         """
 
     @abstractmethod
-    async def receive_audio(self, timeout: float = 10.0, silence_threshold: float = 1.5) -> list[AudioFrame]:
+    async def receive_audio(
+        self, timeout: float = 10.0, silence_threshold: float = 1.5
+    ) -> list[AudioFrame]:
         """Receive audio frames from the agent's response.
 
         Captures audio until silence is detected (no audio for `silence_threshold` seconds)

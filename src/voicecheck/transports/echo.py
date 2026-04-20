@@ -70,16 +70,11 @@ class EchoTransport(Transport):
 
     async def connect(self, config: dict) -> None:
         self._config = config
-        self._response_text = str(
-            config.get("response_text", _DEFAULT_RESPONSE_TEXT)
-        )
+        self._response_text = str(config.get("response_text", _DEFAULT_RESPONSE_TEXT))
         self._first_byte_delay_s = (
-            float(config.get("first_byte_delay_ms", _DEFAULT_FIRST_BYTE_DELAY_MS))
-            / 1000.0
+            float(config.get("first_byte_delay_ms", _DEFAULT_FIRST_BYTE_DELAY_MS)) / 1000.0
         )
-        self._synthesize = bool(
-            config.get("synthesize", bool(self._response_text))
-        )
+        self._synthesize = bool(config.get("synthesize", bool(self._response_text)))
         self._sample_rate = int(config.get("sample_rate", _DEFAULT_SAMPLE_RATE))
         logger.info(
             "echo transport ready (text=%r, first_byte=%.1fs, synthesize=%s)",
@@ -127,9 +122,7 @@ class EchoTransport(Transport):
         try:
             float(first_byte)
         except (TypeError, ValueError):
-            errors.append(
-                f"first_byte_delay_ms must be a number, got {first_byte!r}"
-            )
+            errors.append(f"first_byte_delay_ms must be a number, got {first_byte!r}")
         if "response_text" in config and not isinstance(config["response_text"], str):
             errors.append("response_text must be a string")
         return errors
@@ -145,7 +138,8 @@ class EchoTransport(Transport):
                 # Fall back to silence so a missing TTS extra doesn't break the
                 # dev loop — the whole point of echo is to Just Work.
                 logger.warning(
-                    "echo: TTS synthesis failed (%s), falling back to silence", e,
+                    "echo: TTS synthesis failed (%s), falling back to silence",
+                    e,
                 )
         return self._silent_response()
 

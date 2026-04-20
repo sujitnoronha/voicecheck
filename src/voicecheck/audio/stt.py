@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import logging
-import struct
 import wave
 from abc import ABC, abstractmethod
 
@@ -47,9 +46,7 @@ class WhisperSTTProvider(STTProvider):
             try:
                 from faster_whisper import WhisperModel
             except ImportError:
-                raise ImportError(
-                    "faster-whisper not installed. Run: pip install voicecheck[stt]"
-                )
+                raise ImportError("faster-whisper not installed. Run: pip install voicecheck[stt]")
             logger.info("Loading Whisper model: %s", self.model_size)
             self._model = WhisperModel(
                 self.model_size,
@@ -111,9 +108,7 @@ class OpenAISTTProvider(STTProvider):
             try:
                 from openai import AsyncOpenAI
             except ImportError:
-                raise ImportError(
-                    "openai not installed. Run: pip install voicecheck[llm]"
-                )
+                raise ImportError("openai not installed. Run: pip install voicecheck[llm]")
             self._client = AsyncOpenAI()
 
         client = self._client

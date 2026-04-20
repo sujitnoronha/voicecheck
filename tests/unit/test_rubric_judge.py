@@ -6,17 +6,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import voicecheck.evaluators.rubric_judge  # noqa: F401  # ensures registration
 from voicecheck.core.types import EvalContext, TransportMetrics
 from voicecheck.evaluators.metrics_library import (
     COMMERCIAL_METRICS,
-    Dimension,
     effective_min_score,
     effective_weight,
     resolve_dimension,
 )
 from voicecheck.evaluators.rubric_judge import RubricJudgeEvaluator
-import voicecheck.evaluators.rubric_judge  # noqa: F401  # ensures registration
-
 
 # ── Fixtures ────────────────────────────────────────────────────────
 
@@ -60,33 +58,39 @@ class TestResolveDimension:
             resolve_dimension("does_not_exist")
 
     def test_dict_override_on_preset(self):
-        dim, overrides = resolve_dimension({
-            "name": "pii_handling",
-            "min_score": 1.0,
-            "weight": 2.0,
-        })
+        dim, overrides = resolve_dimension(
+            {
+                "name": "pii_handling",
+                "min_score": 1.0,
+                "weight": 2.0,
+            }
+        )
         assert dim.name == "pii_handling"
         assert overrides == {"min_score": 1.0, "weight": 2.0}
         assert effective_min_score(dim, overrides) == 1.0
         assert effective_weight(dim, overrides) == 2.0
 
     def test_dict_preset_with_description_override(self):
-        dim, overrides = resolve_dimension({
-            "name": "task_completion",
-            "description": "custom description",
-        })
+        dim, overrides = resolve_dimension(
+            {
+                "name": "task_completion",
+                "description": "custom description",
+            }
+        )
         assert dim.description == "custom description"
         # Shouldn't mutate the preset.
         assert COMMERCIAL_METRICS["task_completion"].description != "custom description"
 
     def test_adhoc_dimension(self):
-        dim, overrides = resolve_dimension({
-            "name": "allergy_confirmed",
-            "description": "Agent read the allergy back.",
-            "prompt_guidance": "Fail if not repeated.",
-            "min_score": 1.0,
-            "weight": 1.5,
-        })
+        dim, overrides = resolve_dimension(
+            {
+                "name": "allergy_confirmed",
+                "description": "Agent read the allergy back.",
+                "prompt_guidance": "Fail if not repeated.",
+                "min_score": 1.0,
+                "weight": 1.5,
+            }
+        )
         assert dim.name == "allergy_confirmed"
         assert dim.description == "Agent read the allergy back."
         assert overrides["min_score"] == 1.0
@@ -115,9 +119,7 @@ class TestRubricInit:
 
     def test_invalid_weighting(self):
         with pytest.raises(ValueError, match="weighting must be"):
-            RubricJudgeEvaluator(
-                dimensions=["task_completion"], weighting="geometric"
-            )
+            RubricJudgeEvaluator(dimensions=["task_completion"], weighting="geometric")
 
     def test_accepts_mixed_specs(self):
         ev = RubricJudgeEvaluator(
@@ -300,9 +302,7 @@ class TestRubricEvaluate:
                 {"name": "task_completion", "score": 1.7, "passed": True, "reason": "ok"},
             ],
         }
-        ev = RubricJudgeEvaluator(
-            dimensions=["task_completion"], min_overall_score=0.0
-        )
+        ev = RubricJudgeEvaluator(dimensions=["task_completion"], min_overall_score=0.0)
         with _patch_judge(response):
             result = await ev.evaluate(_ctx())
         dim = result.details["dimensions"][0]

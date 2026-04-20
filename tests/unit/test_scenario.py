@@ -6,13 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from voicecheck.core.scenario import Scenario, load_scenario, validate_scenario
-
 # Register evaluators for validation tests
 import voicecheck.evaluators.keyword  # noqa: F401
 import voicecheck.evaluators.latency  # noqa: F401
 import voicecheck.evaluators.turn_count  # noqa: F401
-
+from voicecheck.core.scenario import Scenario, load_scenario, validate_scenario
 
 BASIC_SCENARIO = """
 name: "Test scenario"
@@ -566,12 +564,16 @@ class TestPreflightChecks:
 
         scenario = Scenario(
             name="test",
-            transport={"type": "livekit", "mode": "direct", "config": {
-                "url": "ws://localhost:7880",
-                "api_key": "test-key",
-                "api_secret": "test-secret",
-                "agent_name": "${VOICECHECK_AGENT_NAME}",
-            }},
+            transport={
+                "type": "livekit",
+                "mode": "direct",
+                "config": {
+                    "url": "ws://localhost:7880",
+                    "api_key": "test-key",
+                    "api_secret": "test-secret",
+                    "agent_name": "${VOICECHECK_AGENT_NAME}",
+                },
+            },
             turns=[{"user": "hi"}],
         )
         runner = ScenarioRunner(scenario)
@@ -584,11 +586,15 @@ class TestPreflightChecks:
 
         scenario = Scenario(
             name="test",
-            transport={"type": "livekit", "mode": "direct", "config": {
-                "url": "ws://localhost:7880",
-                "api_key": "test-key",
-                "api_secret": "test-secret",
-            }},
+            transport={
+                "type": "livekit",
+                "mode": "direct",
+                "config": {
+                    "url": "ws://localhost:7880",
+                    "api_key": "test-key",
+                    "api_secret": "test-secret",
+                },
+            },
             turns=[{"user": "hi"}],
         )
         runner = ScenarioRunner(scenario)
@@ -601,12 +607,16 @@ class TestPreflightChecks:
 
         scenario = Scenario(
             name="test",
-            transport={"type": "livekit", "mode": "direct", "config": {
-                "url": "ws://localhost:7880",
-                "api_key": "test-key",
-                "api_secret": "test-secret",
-                "agent_name": "kidco-agent",
-            }},
+            transport={
+                "type": "livekit",
+                "mode": "direct",
+                "config": {
+                    "url": "ws://localhost:7880",
+                    "api_key": "test-key",
+                    "api_secret": "test-secret",
+                    "agent_name": "kidco-agent",
+                },
+            },
             turns=[{"user": "hi"}],
         )
         runner = ScenarioRunner(scenario)
@@ -619,7 +629,7 @@ class TestRunEvaluatorsErrorHandling:
 
     @pytest.mark.asyncio
     async def test_bad_evaluator_does_not_crash(self):
-        from voicecheck.core.scenario import ScenarioRunner, ExpectConfig
+        from voicecheck.core.scenario import ExpectConfig, ScenarioRunner
         from voicecheck.core.types import EvalContext, TransportMetrics
 
         scenario = Scenario(
@@ -655,15 +665,18 @@ class TestTurnResultPassed:
 
     def test_crashed_turn_fails_even_with_passing_evals(self):
         from voicecheck.core.types import (
-            EvalResult, TransportMetrics, TurnResult,
+            EvalResult,
+            TransportMetrics,
+            TurnResult,
         )
+
         turn = TurnResult(
             turn_index=0,
             user_text="hi",
             agent_text="",
-            eval_results=[EvalResult(
-                evaluator_type="latency", passed=True, score=1.0, reason="ok"
-            )],
+            eval_results=[
+                EvalResult(evaluator_type="latency", passed=True, score=1.0, reason="ok")
+            ],
             metrics=TransportMetrics(),
             error="persona LLM 401",
         )
@@ -671,6 +684,7 @@ class TestTurnResultPassed:
 
     def test_empty_response_no_audio_fails(self):
         from voicecheck.core.types import TransportMetrics, TurnResult
+
         turn = TurnResult(
             turn_index=0,
             user_text="hi",
@@ -683,15 +697,18 @@ class TestTurnResultPassed:
 
     def test_normal_pass_path_still_works(self):
         from voicecheck.core.types import (
-            EvalResult, TransportMetrics, TurnResult,
+            EvalResult,
+            TransportMetrics,
+            TurnResult,
         )
+
         turn = TurnResult(
             turn_index=0,
             user_text="hi",
             agent_text="hello there",
-            eval_results=[EvalResult(
-                evaluator_type="latency", passed=True, score=1.0, reason="ok"
-            )],
+            eval_results=[
+                EvalResult(evaluator_type="latency", passed=True, score=1.0, reason="ok")
+            ],
             metrics=TransportMetrics(),
         )
         assert turn.passed is True
@@ -705,15 +722,20 @@ class TestSkipLLMJudge:
 
     @pytest.mark.asyncio
     async def test_skip_llm_judge_filters_evaluators(self):
-        from voicecheck.core.scenario import ScenarioRunner, ExpectConfig
+        from voicecheck.core.scenario import ExpectConfig, ScenarioRunner
         from voicecheck.core.types import EvalContext, TransportMetrics
 
         scenario = Scenario(
             name="test",
-            turns=[{"user": "hi", "expect": [
-                {"type": "latency", "max_first_byte_ms": 3000},
-                {"type": "llm_judge", "criteria": "Agent is friendly", "min_score": 0.7},
-            ]}],
+            turns=[
+                {
+                    "user": "hi",
+                    "expect": [
+                        {"type": "latency", "max_first_byte_ms": 3000},
+                        {"type": "llm_judge", "criteria": "Agent is friendly", "min_score": 0.7},
+                    ],
+                }
+            ],
         )
         runner = ScenarioRunner(scenario, skip_llm_judge=True)
 
@@ -737,22 +759,32 @@ class TestSkipLLMJudge:
 
     def test_skip_llm_judge_skips_openai_check(self):
         """With --skip-llm-judge, scenarios with only llm_judge don't need OPENAI_API_KEY."""
-        from voicecheck.core.scenario import ScenarioRunner
         import os
+
+        from voicecheck.core.scenario import ScenarioRunner
 
         # Remove OPENAI_API_KEY if set
         old_key = os.environ.pop("OPENAI_API_KEY", None)
         try:
             scenario = Scenario(
                 name="test",
-                transport={"type": "livekit", "mode": "direct", "config": {
-                    "url": "ws://localhost:7880",
-                    "api_key": "test-key",
-                    "api_secret": "test-secret",
-                }},
-                turns=[{"user": "hi", "expect": [
-                    {"type": "llm_judge", "criteria": "test", "min_score": 0.5},
-                ]}],
+                transport={
+                    "type": "livekit",
+                    "mode": "direct",
+                    "config": {
+                        "url": "ws://localhost:7880",
+                        "api_key": "test-key",
+                        "api_secret": "test-secret",
+                    },
+                },
+                turns=[
+                    {
+                        "user": "hi",
+                        "expect": [
+                            {"type": "llm_judge", "criteria": "test", "min_score": 0.5},
+                        ],
+                    }
+                ],
             )
             runner = ScenarioRunner(scenario, skip_llm_judge=True)
             # Should not raise even without OPENAI_API_KEY
@@ -771,7 +803,7 @@ class TestSaveRunArtifacts:
     def test_save_creates_directory_and_files(self, tmp_path):
         from voicecheck.core.report import save_run_artifacts
         from voicecheck.core.scenario import ScenarioReport
-        from voicecheck.core.types import AudioFrame, TurnResult, TransportMetrics
+        from voicecheck.core.types import AudioFrame, TransportMetrics, TurnResult
 
         # Create a report with audio data
         user_frame = AudioFrame(data=b"\x00\x01" * 800, sample_rate=16000)
@@ -801,6 +833,7 @@ class TestSaveRunArtifacts:
 
         # Verify WAV files are valid
         import wave
+
         with wave.open(str(out_dir / "turn_1_agent.wav"), "rb") as wf:
             assert wf.getnchannels() == 1
             assert wf.getsampwidth() == 2
@@ -809,7 +842,7 @@ class TestSaveRunArtifacts:
     def test_save_skips_empty_audio(self, tmp_path):
         from voicecheck.core.report import save_run_artifacts
         from voicecheck.core.scenario import ScenarioReport
-        from voicecheck.core.types import TurnResult, TransportMetrics
+        from voicecheck.core.types import TransportMetrics, TurnResult
 
         report = ScenarioReport(
             scenario_name="test",
@@ -875,6 +908,7 @@ class TestTransportMetrics:
 
     def test_timer_context_manager(self):
         import time
+
         from voicecheck.core.types import Timer
 
         with Timer() as t:
@@ -887,6 +921,7 @@ class TestJsonReportMetrics:
 
     def test_report_includes_new_metrics(self, tmp_path):
         import json
+
         from voicecheck.core.report import write_json_report
         from voicecheck.core.scenario import ScenarioReport
         from voicecheck.core.types import TransportMetrics, TurnResult

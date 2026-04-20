@@ -39,12 +39,15 @@ def _is_transient_openai_error(exc: Exception) -> bool:
         import openai
     except ImportError:
         return False
-    return isinstance(exc, (
-        openai.APIConnectionError,
-        openai.APITimeoutError,
-        openai.RateLimitError,
-        openai.InternalServerError,
-    ))
+    return isinstance(
+        exc,
+        (
+            openai.APIConnectionError,
+            openai.APITimeoutError,
+            openai.RateLimitError,
+            openai.InternalServerError,
+        ),
+    )
 
 
 def _is_transient_anthropic_error(exc: Exception) -> bool:
@@ -54,9 +57,12 @@ def _is_transient_anthropic_error(exc: Exception) -> bool:
     except ImportError:
         return False
     transient_types = tuple(
-        cls for name in (
-            "APIConnectionError", "APITimeoutError",
-            "RateLimitError", "InternalServerError",
+        cls
+        for name in (
+            "APIConnectionError",
+            "APITimeoutError",
+            "RateLimitError",
+            "InternalServerError",
         )
         for cls in (getattr(anthropic, name, None),)
         if cls is not None
@@ -98,33 +104,35 @@ async def call_llm_judge(
 
     if provider == "openai":
         text = await _call_openai(
-            system_prompt, user_prompt, resolved_model,
-            temperature=temperature, max_tokens=max_tokens, response_json=response_json,
+            system_prompt,
+            user_prompt,
+            resolved_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_json=response_json,
         )
     elif provider == "anthropic":
         text = await _call_anthropic(
-            system_prompt, user_prompt, resolved_model,
-            temperature=temperature, max_tokens=max_tokens,
+            system_prompt,
+            user_prompt,
+            resolved_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
     else:
-        raise LLMServiceError(
-            f"Unknown LLM provider: {provider!r}. Use 'openai' or 'anthropic'."
-        )
+        raise LLMServiceError(f"Unknown LLM provider: {provider!r}. Use 'openai' or 'anthropic'.")
 
     try:
         return json.loads(strip_markdown_fences(text))
     except json.JSONDecodeError as e:
-        raise LLMServiceError(
-            f"LLM returned non-JSON output: {text[:200]!r} ({e})"
-        ) from e
+        raise LLMServiceError(f"LLM returned non-JSON output: {text[:200]!r} ({e})") from e
 
 
 def default_model(provider: str) -> str:
     """Return the default model for a provider."""
     if provider not in DEFAULT_MODELS:
         raise LLMServiceError(
-            f"Unknown LLM provider: {provider!r}. "
-            f"Supported: {', '.join(DEFAULT_MODELS)}"
+            f"Unknown LLM provider: {provider!r}. Supported: {', '.join(DEFAULT_MODELS)}"
         )
     return DEFAULT_MODELS[provider]
 
@@ -149,7 +157,9 @@ def build_conversation_context(
         logger.warning(
             "build_conversation_context: truncated %d of %d entries "
             "(max_turns=%d) — judge will not see dropped turns",
-            dropped, len(conversation), max_turns,
+            dropped,
+            len(conversation),
+            max_turns,
         )
     entries = conversation[-max_turns:]
     lines = []
@@ -189,14 +199,9 @@ async def _call_openai(
         try:
             from openai import AsyncOpenAI
         except ImportError as e:
-            raise LLMServiceError(
-                "openai not installed. Run: pip install voicecheck[llm]"
-            ) from e
+            raise LLMServiceError("openai not installed. Run: pip install voicecheck[llm]") from e
         if not os.environ.get("OPENAI_API_KEY"):
-            raise LLMServiceError(
-                "OPENAI_API_KEY is not set. "
-                "Export it or pass --skip-llm-judge."
-            )
+            raise LLMServiceError("OPENAI_API_KEY is not set. Export it or pass --skip-llm-judge.")
         _openai_client = AsyncOpenAI()
 
     kwargs: dict[str, Any] = {
@@ -246,8 +251,7 @@ async def _call_anthropic(
             ) from e
         if not os.environ.get("ANTHROPIC_API_KEY"):
             raise LLMServiceError(
-                "ANTHROPIC_API_KEY is not set. "
-                "Export it or pass --skip-llm-judge."
+                "ANTHROPIC_API_KEY is not set. Export it or pass --skip-llm-judge."
             )
         _anthropic_client = AsyncAnthropic()
 

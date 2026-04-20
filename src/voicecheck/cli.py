@@ -25,6 +25,7 @@ def _setup_logging(verbose: bool) -> None:
     # lk.transcription / lk.agent.events topics).
     if not verbose:
         logging.getLogger("livekit").setLevel(logging.WARNING)
+
         # The SDK also logs some messages via the root logger; add a filter
         # to drop the "ignoring text stream" noise.
         class _IgnoreTextStreamFilter(logging.Filter):
@@ -45,9 +46,7 @@ def _parse_duration(value: str) -> int:
     """Parse a duration string like '20m', '1h', '90s' into seconds."""
     match = re.fullmatch(r"(\d+)\s*([smh])?", value.strip().lower())
     if not match:
-        raise click.BadParameter(
-            f"Invalid duration: {value!r}. Use e.g. '20m', '1h', '90s'."
-        )
+        raise click.BadParameter(f"Invalid duration: {value!r}. Use e.g. '20m', '1h', '90s'.")
     num = int(match.group(1))
     unit = match.group(2) or "s"
     multiplier = {"s": 1, "m": 60, "h": 3600}
@@ -72,8 +71,8 @@ def _ensure_registrations() -> None:
             pass
 
     # Evaluators — core ones are always available
-    import voicecheck.evaluators.latency  # noqa: F401
     import voicecheck.evaluators.keyword  # noqa: F401
+    import voicecheck.evaluators.latency  # noqa: F401
     import voicecheck.evaluators.turn_count  # noqa: F401
 
     # LLM-based evaluators — require openai or anthropic SDK
@@ -127,7 +126,8 @@ def main() -> None:
     help="Skip all llm_judge evaluators and conversation eval (saves API cost)",
 )
 @click.option(
-    "-q", "--questions",
+    "-q",
+    "--questions",
     multiple=True,
     help="Fixed questions to send to the agent (repeatable). Overrides persona/turns in the YAML.",
 )
@@ -188,7 +188,8 @@ def run(
         sys.exit(1)
 
     if concurrent > 1:
-        from voicecheck.core.load import run_concurrent, print_load_summary
+        from voicecheck.core.load import print_load_summary, run_concurrent
+
         async def _load_test() -> None:
             all_passed = True
             for f in files:
@@ -199,17 +200,24 @@ def run(
                     all_passed = False
             if not all_passed:
                 sys.exit(1)
+
         asyncio.run(_load_test())
     elif duration:
         duration_secs = _parse_duration(duration)
-        asyncio.run(
-            _run_soak(files, duration_secs, output, parallel, not no_save, list(tag), db)
-        )
+        asyncio.run(_run_soak(files, duration_secs, output, parallel, not no_save, list(tag), db))
     else:
         asyncio.run(
             _run_scenarios(
-                files, output, parallel, not no_save, list(tag), db,
-                save_audio, skip_llm_judge, list(questions), auto_mode,
+                files,
+                output,
+                parallel,
+                not no_save,
+                list(tag),
+                db,
+                save_audio,
+                skip_llm_judge,
+                list(questions),
+                auto_mode,
             )
         )
 
@@ -232,6 +240,7 @@ async def _run_scenarios(
     store = None
     if save:
         from voicecheck.storage.store import ResultStore
+
         store = ResultStore(db_path)
 
     all_passed = True
@@ -265,11 +274,9 @@ async def _run_scenarios(
                 runner = _make_runner(f)
                 return await runner.run()
 
-        reports = await asyncio.gather(
-            *[run_one(f) for f in files], return_exceptions=True
-        )
+        reports = await asyncio.gather(*[run_one(f) for f in files], return_exceptions=True)
 
-        for f, report in zip(files, reports):
+        for f, report in zip(files, reports, strict=False):
             if isinstance(report, Exception):
                 click.echo(f"ERROR running {f.name}: {report}", err=True)
                 all_passed = False
@@ -335,6 +342,7 @@ async def _run_soak(
     store = None
     if save:
         from voicecheck.storage.store import ResultStore
+
         store = ResultStore(db_path)
 
     results: list[SoakResult] = []
@@ -343,15 +351,19 @@ async def _run_soak(
     deadline = start + duration_secs
 
     minutes = duration_secs / 60
-    click.echo(f"\nStarting soak test — {minutes:.0f} min, {len(files)} scenario(s), parallel={parallel}")
-    click.echo(f"Press Ctrl+C to stop early and see summary.\n")
+    click.echo(
+        f"\nStarting soak test — {minutes:.0f} min, {len(files)} scenario(s), parallel={parallel}"
+    )
+    click.echo("Press Ctrl+C to stop early and see summary.\n")
 
     try:
         while time.monotonic() < deadline:
             iteration += 1
             elapsed = (time.monotonic() - start) / 60
             remaining = (deadline - time.monotonic()) / 60
-            click.echo(f"── Iteration {iteration} ({elapsed:.1f}m elapsed, {remaining:.1f}m remaining) ──")
+            click.echo(
+                f"── Iteration {iteration} ({elapsed:.1f}m elapsed, {remaining:.1f}m remaining) ──"
+            )
 
             iter_tags = tags + ["soak", f"iteration:{iteration}"]
 
@@ -363,13 +375,13 @@ async def _run_soak(
                         try:
                             runner = ScenarioRunner.from_yaml(f)
                             report = await runner.run()
-                            return SoakResult(iteration=it, scenario_name=report.scenario_name, report=report)
+                            return SoakResult(
+                                iteration=it, scenario_name=report.scenario_name, report=report
+                            )
                         except Exception as e:
                             return SoakResult(iteration=it, scenario_name=f.stem, error=str(e))
 
-                batch = await asyncio.gather(
-                    *[run_one(f, iteration) for f in files]
-                )
+                batch = await asyncio.gather(*[run_one(f, iteration) for f in files])
 
                 for sr in batch:
                     results.append(sr)
@@ -387,12 +399,16 @@ async def _run_soak(
                     try:
                         runner = ScenarioRunner.from_yaml(f)
                         report = await runner.run()
-                        sr = SoakResult(iteration=iteration, scenario_name=report.scenario_name, report=report)
+                        sr = SoakResult(
+                            iteration=iteration, scenario_name=report.scenario_name, report=report
+                        )
                         results.append(sr)
                         print_console_report(report)
                         if store:
                             transport_type = runner.scenario.transport.type
-                            run_id = store.save_report(report, transport_type=transport_type, tags=iter_tags)
+                            run_id = store.save_report(
+                                report, transport_type=transport_type, tags=iter_tags
+                            )
                             click.echo(f"  Saved as run {run_id[:8]}", err=True)
                     except Exception as e:
                         sr = SoakResult(iteration=iteration, scenario_name=f.stem, error=str(e))
@@ -481,7 +497,9 @@ def history(limit: int, scenario: str | None, db: str | None) -> None:
         return
 
     # Header
-    click.echo(f"\n{'ID':<10} {'Scenario':<30} {'Status':<8} {'Turns':<10} {'Latency':<12} {'Date'}")
+    click.echo(
+        f"\n{'ID':<10} {'Scenario':<30} {'Status':<8} {'Turns':<10} {'Latency':<12} {'Date'}"
+    )
     click.echo("-" * 90)
 
     for r in runs:
@@ -489,7 +507,9 @@ def history(limit: int, scenario: str | None, db: str | None) -> None:
         turns = f"{r['passed_turns']}/{r['total_turns']}"
         latency = f"{r['avg_first_byte_ms']:.0f}ms" if r["avg_first_byte_ms"] else "—"
         date = r["created_at"][:19].replace("T", " ")
-        click.echo(f"{r['id'][:8]:<10} {r['scenario_name']:<30} {status:<17} {turns:<10} {latency:<12} {date}")
+        click.echo(
+            f"{r['id'][:8]:<10} {r['scenario_name']:<30} {status:<17} {turns:<10} {latency:<12} {date}"
+        )
 
     click.echo(f"\n{len(runs)} runs shown. Use --limit to see more.")
     store.close()
@@ -531,11 +551,15 @@ def show(run_id: str, db: str | None) -> None:
     click.echo()
 
     for t in full_run.get("turns", []):
-        turn_status = click.style("PASS", fg="green") if t["passed"] else click.style("FAIL", fg="red")
+        turn_status = (
+            click.style("PASS", fg="green") if t["passed"] else click.style("FAIL", fg="red")
+        )
         click.echo(f"Turn {t['turn_index'] + 1}: [{turn_status}]")
         click.echo(f"  User:  {t['user_text']}")
         click.echo(f"  Agent: {t.get('agent_text', '(no response)')}")
-        click.echo(f"  Latency: {t.get('first_byte_ms', 0):.0f}ms first byte, {t.get('total_ms', 0):.0f}ms total")
+        click.echo(
+            f"  Latency: {t.get('first_byte_ms', 0):.0f}ms first byte, {t.get('total_ms', 0):.0f}ms total"
+        )
         for ev in t.get("evaluations", []):
             icon = click.style("+", fg="green") if ev["passed"] else click.style("x", fg="red")
             click.echo(f"  [{icon}] {ev['type']}: {ev['reason']} (score={ev['score']:.2f})")
@@ -549,7 +573,8 @@ def show(run_id: str, db: str | None) -> None:
 
 @main.command()
 @click.option(
-    "-o", "--output",
+    "-o",
+    "--output",
     type=click.Path(),
     default="voicecheck_dashboard.html",
     help="Output HTML file path",
@@ -581,6 +606,7 @@ def dashboard(
 
     if open_browser:
         import webbrowser
+
         webbrowser.open(f"file://{out_path.resolve()}")
 
 

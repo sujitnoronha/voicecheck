@@ -114,13 +114,10 @@ class VAPITransport(WebSocketTransport):
             assistant_id = config.get("assistant_id")
             if not assistant_id:
                 raise ValueError(
-                    "VAPI transport requires either 'assistant_id' or "
-                    "'assistant_config' in config."
+                    "VAPI transport requires either 'assistant_id' or 'assistant_config' in config."
                 )
             body = {"assistantId": assistant_id}
-            logger.info(
-                "Creating VAPI web call for assistant %s", assistant_id
-            )
+            logger.info("Creating VAPI web call for assistant %s", assistant_id)
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -147,25 +144,20 @@ class VAPITransport(WebSocketTransport):
             status = exc.response.status_code
             detail = exc.response.text[:500]
             raise ConnectionError(
-                f"VAPI API returned HTTP {status} when creating web call: "
-                f"{detail}"
+                f"VAPI API returned HTTP {status} when creating web call: {detail}"
             )
 
         # Extract call ID and transport URL from the response.
         call_id = data.get("id")
         if not call_id:
             raise ConnectionError(
-                "VAPI API response missing 'id' field. "
-                f"Response keys: {list(data.keys())}"
+                f"VAPI API response missing 'id' field. Response keys: {list(data.keys())}"
             )
         self._call_id = call_id
 
         # The transport URL lives under data["transport"]["websocket"]["url"]
         # or directly under data["webCallUrl"] depending on API version.
-        ws_url = (
-            _nested_get(data, "transport", "websocket", "url")
-            or data.get("webCallUrl")
-        )
+        ws_url = _nested_get(data, "transport", "websocket", "url") or data.get("webCallUrl")
         if not ws_url:
             raise ConnectionError(
                 f"VAPI API response for call {call_id} does not contain a "
@@ -266,9 +258,7 @@ class VAPITransport(WebSocketTransport):
         if msg_type == "speech-update":
             status = event.get("status", "")
             role = event.get("role", "")
-            logger.debug(
-                "VAPI speech-update: role=%s status=%s", role, status
-            )
+            logger.debug("VAPI speech-update: role=%s status=%s", role, status)
 
         elif msg_type == "transcript":
             role = event.get("role", "")
@@ -305,9 +295,7 @@ class VAPITransport(WebSocketTransport):
             config: Transport config dict.
         """
         if not self._call_id or not self._api_key:
-            logger.debug(
-                "Skipping VAPI call teardown (no call_id or api_key)"
-            )
+            logger.debug("Skipping VAPI call teardown (no call_id or api_key)")
             return
 
         httpx = _require_httpx()
@@ -323,9 +311,7 @@ class VAPITransport(WebSocketTransport):
                     headers=headers,
                 )
                 if resp.is_success:
-                    logger.info(
-                        "VAPI call ended via API (call_id=%s)", self._call_id
-                    )
+                    logger.info("VAPI call ended via API (call_id=%s)", self._call_id)
                 else:
                     logger.warning(
                         "VAPI call teardown returned HTTP %d for call_id=%s: %s",

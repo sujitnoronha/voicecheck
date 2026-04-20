@@ -73,25 +73,25 @@ def _build_persona_system_prompt(persona: PersonaConfig) -> str:
         parts.append(f"Your goals in this conversation: {', '.join(persona.goals)}.")
 
     if persona.topics:
-        parts.append(
-            f"Topics you're interested in discussing: {', '.join(persona.topics)}."
-        )
+        parts.append(f"Topics you're interested in discussing: {', '.join(persona.topics)}.")
 
     if persona.instructions:
         parts.append(f"Special instructions: {persona.instructions}")
 
-    parts.extend([
-        "",
-        "Rules:",
-        "- Stay in character at all times.",
-        "- Respond naturally as this person would in a voice conversation.",
-        "- Keep responses concise (1-3 sentences) — this is a spoken conversation, not text.",
-        "- React naturally to what the agent says. Ask follow-up questions, share opinions.",
-        "- If the agent says something unexpected or wrong, respond how your character would.",
-        "- Do NOT break character or mention that you are an AI or a test.",
-        "",
-        "Respond with ONLY the next thing you would say out loud. No quotes, no stage directions, no metadata.",
-    ])
+    parts.extend(
+        [
+            "",
+            "Rules:",
+            "- Stay in character at all times.",
+            "- Respond naturally as this person would in a voice conversation.",
+            "- Keep responses concise (1-3 sentences) — this is a spoken conversation, not text.",
+            "- React naturally to what the agent says. Ask follow-up questions, share opinions.",
+            "- If the agent says something unexpected or wrong, respond how your character would.",
+            "- Do NOT break character or mention that you are an AI or a test.",
+            "",
+            "Respond with ONLY the next thing you would say out loud. No quotes, no stage directions, no metadata.",
+        ]
+    )
 
     return "\n".join(parts)
 
@@ -246,8 +246,7 @@ class ConversationEngine:
 
         response = await self._call_llm(
             system=self._system_prompt,
-            messages=self._messages
-            + [{"role": "user", "content": "What do you say next?"}],
+            messages=self._messages + [{"role": "user", "content": "What do you say next?"}],
         )
 
         self._messages.append({"role": "assistant", "content": response})
@@ -274,9 +273,7 @@ class ConversationEngine:
             transcript_lines.append(f"{role}: {msg['text']}")
         transcript = "\n".join(transcript_lines)
 
-        criteria_text = "\n".join(
-            f"- {c}" for c in eval_config.criteria
-        )
+        criteria_text = "\n".join(f"- {c}" for c in eval_config.criteria)
 
         user_prompt = CONVERSATION_EVAL_USER.format(
             transcript=transcript,
@@ -315,9 +312,7 @@ class ConversationEngine:
             try:
                 from openai import AsyncOpenAI
             except ImportError:
-                raise ImportError(
-                    "openai not installed. Run: pip install voicecheck[llm]"
-                )
+                raise ImportError("openai not installed. Run: pip install voicecheck[llm]")
             self._openai_client = AsyncOpenAI()
 
         client = self._openai_client

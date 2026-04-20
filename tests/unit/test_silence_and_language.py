@@ -1,10 +1,7 @@
 """Tests for silence generation and multi-language support."""
 
-import pytest
-
-from voicecheck.audio.utils import generate_silence, compute_rms, is_silent
 from voicecheck.audio.tts import EDGE_TTS_VOICES, EdgeTTSProvider
-from voicecheck.core.types import AudioFrame
+from voicecheck.audio.utils import compute_rms, generate_silence, is_silent
 
 
 class TestGenerateSilence:
@@ -58,8 +55,26 @@ class TestGenerateSilence:
 
 class TestEdgeTTSVoices:
     def test_all_languages_have_voices(self):
-        expected = ["en", "es", "fr", "de", "pt", "ja", "ko", "zh",
-                    "it", "hi", "ar", "ru", "nl", "pl", "sv", "tr", "th", "vi"]
+        expected = [
+            "en",
+            "es",
+            "fr",
+            "de",
+            "pt",
+            "ja",
+            "ko",
+            "zh",
+            "it",
+            "hi",
+            "ar",
+            "ru",
+            "nl",
+            "pl",
+            "sv",
+            "tr",
+            "th",
+            "vi",
+        ]
         for lang in expected:
             assert lang in EDGE_TTS_VOICES, f"Missing voice for {lang}"
 

@@ -131,9 +131,7 @@ class RubricJudgeEvaluator(Evaluator):
         if not dimensions:
             raise ValueError("rubric_judge requires at least one dimension")
         if weighting not in self.WEIGHTING_MODES:
-            raise ValueError(
-                f"weighting must be one of {self.WEIGHTING_MODES}, got {weighting!r}"
-            )
+            raise ValueError(f"weighting must be one of {self.WEIGHTING_MODES}, got {weighting!r}")
 
         self._dims: list[tuple[Dimension, dict[str, float]]] = [
             resolve_dimension(spec) for spec in dimensions
@@ -166,9 +164,7 @@ class RubricJudgeEvaluator(Evaluator):
                 if not supplied.get(required, False):
                     missing.append(f"{dim.name} requires {required!r}")
         if missing:
-            raise ValueError(
-                "rubric_judge: " + "; ".join(missing)
-            )
+            raise ValueError("rubric_judge: " + "; ".join(missing))
 
     # ── Public Evaluator API ────────────────────────────────────
 
@@ -229,14 +225,16 @@ class RubricJudgeEvaluator(Evaluator):
 
             entry = response_dims.get(dim.name)
             if entry is None:
-                per_dim_details.append({
-                    "name": dim.name,
-                    "score": 0.0,
-                    "passed": False,
-                    "reason": "missing from judge response",
-                    "min_score": min_score,
-                    "weight": weight,
-                })
+                per_dim_details.append(
+                    {
+                        "name": dim.name,
+                        "score": 0.0,
+                        "passed": False,
+                        "reason": "missing from judge response",
+                        "min_score": min_score,
+                        "weight": weight,
+                    }
+                )
                 scores.append(0.0)
                 weights.append(weight)
                 all_passed = False
@@ -251,31 +249,30 @@ class RubricJudgeEvaluator(Evaluator):
             if score < 0.0 or score > 1.0:
                 logger.warning(
                     "rubric_judge: %s score %s out of range, clamping",
-                    dim.name, score,
+                    dim.name,
+                    score,
                 )
                 score = max(0.0, min(1.0, score))
 
             # Trust judge's 'passed' flag if present; else derive from threshold.
             passed_flag = entry.get("passed")
-            dim_passed = (
-                bool(passed_flag)
-                if isinstance(passed_flag, bool)
-                else score >= min_score
-            )
+            dim_passed = bool(passed_flag) if isinstance(passed_flag, bool) else score >= min_score
             # Always enforce the threshold — even if the judge claims pass.
             if score < min_score:
                 dim_passed = False
 
             reason = str(entry.get("reason", ""))[:300]
 
-            per_dim_details.append({
-                "name": dim.name,
-                "score": score,
-                "passed": dim_passed,
-                "reason": reason,
-                "min_score": min_score,
-                "weight": weight,
-            })
+            per_dim_details.append(
+                {
+                    "name": dim.name,
+                    "score": score,
+                    "passed": dim_passed,
+                    "reason": reason,
+                    "min_score": min_score,
+                    "weight": weight,
+                }
+            )
             scores.append(score)
             weights.append(weight)
             if not dim_passed:
@@ -284,9 +281,8 @@ class RubricJudgeEvaluator(Evaluator):
 
         aggregated = self._aggregate(scores, weights)
         overall_passed = all_passed and aggregated >= self.min_overall_score
-        overall_reason = (
-            raw.get("overall_reason")
-            or ("; ".join(failure_reasons) if failure_reasons else "all dimensions passed")
+        overall_reason = raw.get("overall_reason") or (
+            "; ".join(failure_reasons) if failure_reasons else "all dimensions passed"
         )
 
         return EvalResult(
@@ -312,7 +308,7 @@ class RubricJudgeEvaluator(Evaluator):
             total_weight = sum(weights)
             if total_weight == 0:
                 return sum(scores) / len(scores)
-            return sum(s * w for s, w in zip(scores, weights)) / total_weight
+            return sum(s * w for s, w in zip(scores, weights, strict=False)) / total_weight
         # mean
         return sum(scores) / len(scores)
 

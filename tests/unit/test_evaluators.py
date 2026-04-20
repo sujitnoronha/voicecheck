@@ -2,13 +2,11 @@
 
 import pytest
 
-from voicecheck.core.types import EvalContext, TransportMetrics
-
 # Register evaluators
 import voicecheck.evaluators.keyword  # noqa: F401
 import voicecheck.evaluators.latency  # noqa: F401
 import voicecheck.evaluators.turn_count  # noqa: F401
-
+from voicecheck.core.types import EvalContext, TransportMetrics
 from voicecheck.evaluators.keyword import KeywordEvaluator
 from voicecheck.evaluators.latency import LatencyEvaluator
 from voicecheck.evaluators.turn_count import TurnCountEvaluator

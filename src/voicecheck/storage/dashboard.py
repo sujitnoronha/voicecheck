@@ -54,16 +54,18 @@ def generate_dashboard(
         if history:
             latest_run = store.get_run(history[0]["id"])
 
-        scenario_data.append({
-            "name": s["scenario_name"],
-            "run_count": s["run_count"],
-            "pass_count": s["pass_count"],
-            "pass_rate": (s["pass_count"] / s["run_count"] * 100) if s["run_count"] else 0,
-            "avg_latency": s["avg_latency"] or 0,
-            "last_run": s["last_run"],
-            "history": history,
-            "latest_run": latest_run,
-        })
+        scenario_data.append(
+            {
+                "name": s["scenario_name"],
+                "run_count": s["run_count"],
+                "pass_count": s["pass_count"],
+                "pass_rate": (s["pass_count"] / s["run_count"] * 100) if s["run_count"] else 0,
+                "avg_latency": s["avg_latency"] or 0,
+                "last_run": s["last_run"],
+                "history": history,
+                "latest_run": latest_run,
+            }
+        )
 
     html_content = _render_html(scenario_data)
     output_path.write_text(html_content)
@@ -215,8 +217,7 @@ def _render_charts_js(scenario_data: list[dict[str, Any]]) -> str:
         labels = [h["created_at"][:16].replace("T", " ") for h in history]
         latencies = [h.get("avg_first_byte_ms", 0) or 0 for h in history]
         pass_rates = [
-            (h["passed_turns"] / h["total_turns"] * 100) if h["total_turns"] else 0
-            for h in history
+            (h["passed_turns"] / h["total_turns"] * 100) if h["total_turns"] else 0 for h in history
         ]
 
         snippets.append(f"""
@@ -277,4 +278,5 @@ def _safe_chart_id(name: str) -> str:
 
 def _now_str() -> str:
     from datetime import datetime, timezone
+
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

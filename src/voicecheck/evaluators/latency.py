@@ -28,9 +28,7 @@ class LatencyEvaluator(Evaluator):
         # turn crashed. A 0ms "latency" is not a pass, it's a missing signal.
         if self.max_first_byte_ms > 0 and first_byte <= 0:
             passed = False
-            reasons.append(
-                "No agent response received (first_byte=0ms) — cannot evaluate latency"
-            )
+            reasons.append("No agent response received (first_byte=0ms) — cannot evaluate latency")
         elif self.max_first_byte_ms > 0 and first_byte > self.max_first_byte_ms:
             passed = False
             reasons.append(
@@ -39,14 +37,10 @@ class LatencyEvaluator(Evaluator):
 
         if self.max_total_ms > 0 and total <= 0:
             passed = False
-            reasons.append(
-                "No agent response received (total=0ms) — cannot evaluate latency"
-            )
+            reasons.append("No agent response received (total=0ms) — cannot evaluate latency")
         elif self.max_total_ms > 0 and total > self.max_total_ms:
             passed = False
-            reasons.append(
-                f"Total {total:.0f}ms exceeds max {self.max_total_ms:.0f}ms"
-            )
+            reasons.append(f"Total {total:.0f}ms exceeds max {self.max_total_ms:.0f}ms")
 
         if not reasons:
             reasons.append(f"Latency OK (first_byte={first_byte:.0f}ms, total={total:.0f}ms)")

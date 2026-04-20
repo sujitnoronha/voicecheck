@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import struct
 
-import pytest
-
 from voicecheck.audio.utils import (
     compute_rms,
     is_silent,
@@ -13,7 +11,6 @@ from voicecheck.audio.utils import (
     pcm_to_mulaw,
     resample_pcm,
 )
-
 
 # ── is_silent / compute_rms ──────────────────────────────────────
 
@@ -81,7 +78,9 @@ class TestComputeRms:
 class TestMulawCodec:
     def test_roundtrip_preserves_shape(self) -> None:
         """Mu-law is lossy, but the roundtrip should preserve the general signal shape."""
-        original = struct.pack("<10h", 0, 1000, -1000, 5000, -5000, 10000, -10000, 20000, -20000, 32000)
+        original = struct.pack(
+            "<10h", 0, 1000, -1000, 5000, -5000, 10000, -10000, 20000, -20000, 32000
+        )
         mulaw = pcm_to_mulaw(original)
         assert len(mulaw) == 10  # 10 PCM samples -> 10 mulaw bytes
         back = mulaw_to_pcm(mulaw)
@@ -170,13 +169,13 @@ class TestResamplePcm:
 
 class TestTransportRegistration:
     def test_all_transports_registered(self) -> None:
-        from voicecheck.core.transport import _TRANSPORT_REGISTRY
+        import voicecheck.transports.daily  # noqa: F401
 
         # Import all transports
         import voicecheck.transports.livekit  # noqa: F401
-        import voicecheck.transports.daily  # noqa: F401
-        import voicecheck.transports.vapi  # noqa: F401
         import voicecheck.transports.retell  # noqa: F401
+        import voicecheck.transports.vapi  # noqa: F401
+        from voicecheck.core.transport import _TRANSPORT_REGISTRY
 
         assert "livekit" in _TRANSPORT_REGISTRY
         assert "daily" in _TRANSPORT_REGISTRY
@@ -184,12 +183,11 @@ class TestTransportRegistration:
         assert "retell" in _TRANSPORT_REGISTRY
 
     def test_transport_subclass(self) -> None:
-        from voicecheck.core.transport import Transport, get_transport
-
-        import voicecheck.transports.livekit  # noqa: F401
         import voicecheck.transports.daily  # noqa: F401
-        import voicecheck.transports.vapi  # noqa: F401
+        import voicecheck.transports.livekit  # noqa: F401
         import voicecheck.transports.retell  # noqa: F401
+        import voicecheck.transports.vapi  # noqa: F401
+        from voicecheck.core.transport import Transport, get_transport
 
         for name in ("livekit", "daily", "vapi", "retell"):
             cls = get_transport(name)

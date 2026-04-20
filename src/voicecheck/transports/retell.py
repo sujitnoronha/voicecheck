@@ -94,18 +94,14 @@ class RetellTransport(WebSocketTransport):
             )
 
         self._api_key = config["api_key"]
-        self._retell_sample_rate = config.get(
-            "retell_sample_rate", _DEFAULT_RETELL_SAMPLE_RATE
-        )
+        self._retell_sample_rate = config.get("retell_sample_rate", _DEFAULT_RETELL_SAMPLE_RATE)
 
         # Build request body.
         body: dict[str, Any] = {"agent_id": config["agent_id"]}
         if "metadata" in config:
             body["metadata"] = config["metadata"]
         if "retell_llm_dynamic_variables" in config:
-            body["retell_llm_dynamic_variables"] = config[
-                "retell_llm_dynamic_variables"
-            ]
+            body["retell_llm_dynamic_variables"] = config["retell_llm_dynamic_variables"]
 
         url = f"{_RETELL_API_BASE}/v2/create-web-call"
         headers = {
@@ -121,9 +117,7 @@ class RetellTransport(WebSocketTransport):
                 resp.raise_for_status()
                 data = resp.json()
         except httpx.TimeoutException:
-            raise ConnectionError(
-                f"Retell create-web-call timed out after {request_timeout}s"
-            )
+            raise ConnectionError(f"Retell create-web-call timed out after {request_timeout}s")
         except httpx.HTTPStatusError as exc:
             raise ConnectionError(
                 f"Retell create-web-call returned HTTP {exc.response.status_code}: "
@@ -160,9 +154,7 @@ class RetellTransport(WebSocketTransport):
             }
         )
         await ws.send(config_message)
-        logger.info(
-            "Sent config frame to Retell (call_id=%s)", self._call_id
-        )
+        logger.info("Sent config frame to Retell (call_id=%s)", self._call_id)
 
     def _encode_outbound_frame(self, frame: AudioFrame) -> bytes:
         """Encode an outbound audio frame for Retell.
@@ -282,9 +274,7 @@ class RetellTransport(WebSocketTransport):
         Retell ends the call automatically when the WebSocket closes, so no
         explicit REST teardown is required.  We simply log the disconnect.
         """
-        logger.info(
-            "Disconnecting from Retell (call_id=%s)", self._call_id
-        )
+        logger.info("Disconnecting from Retell (call_id=%s)", self._call_id)
 
 
 # ---------------------------------------------------------------------------

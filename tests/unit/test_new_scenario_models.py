@@ -5,23 +5,18 @@ import os
 import tempfile
 from pathlib import Path
 
-import pytest
-
-from voicecheck.core.scenario import (
-    AudioConfig,
-    DegradationConfig,
-    InterruptConfig,
-    Scenario,
-    SilenceConfig,
-    TurnConfig,
-    load_scenario,
-    validate_scenario,
-)
-
 # Register evaluators for validation
 import voicecheck.evaluators.keyword  # noqa: F401
 import voicecheck.evaluators.latency  # noqa: F401
 import voicecheck.evaluators.turn_count  # noqa: F401
+from voicecheck.core.scenario import (
+    AudioConfig,
+    DegradationConfig,
+    InterruptConfig,
+    SilenceConfig,
+    TurnConfig,
+    load_scenario,
+)
 
 
 def _write_yaml(content: str) -> Path:
@@ -251,6 +246,7 @@ class TestScenarioRunnerHelpers:
 
     def test_create_providers_with_language(self):
         from voicecheck.core.scenario import ScenarioRunner
+
         path = _write_yaml("""
 name: test
 audio:
@@ -270,6 +266,7 @@ turns:
 
     def test_create_providers_no_language(self):
         from voicecheck.core.scenario import ScenarioRunner
+
         path = _write_yaml("""
 name: test
 turns:
@@ -286,6 +283,7 @@ turns:
     def test_apply_degradation_noop(self):
         from voicecheck.core.scenario import ScenarioRunner
         from voicecheck.core.types import AudioFrame
+
         path = _write_yaml("""
 name: test
 turns:
@@ -301,10 +299,11 @@ turns:
             os.unlink(path)
 
     def test_apply_degradation_with_noise(self):
+        import math
+        import struct
+
         from voicecheck.core.scenario import ScenarioRunner
         from voicecheck.core.types import AudioFrame
-        import struct
-        import math
 
         # Generate a non-silent tone
         samples = [int(10000 * math.sin(2 * math.pi * 440 * i / 16000)) for i in range(320)]

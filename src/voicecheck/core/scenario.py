@@ -20,16 +20,18 @@ logger = logging.getLogger("voicecheck.core.scenario")
 
 
 # Evaluator types that issue LLM calls — all skipped by --skip-llm-judge.
-_LLM_EVALUATOR_TYPES: frozenset[str] = frozenset({
-    "llm_judge",
-    "rubric_judge",
-    "emotional_tone",
-    "fact_accuracy",
-    "info_leakage",
-    "memory_recall",
-    "character_break",
-    "personality_consistency",
-})
+_LLM_EVALUATOR_TYPES: frozenset[str] = frozenset(
+    {
+        "llm_judge",
+        "rubric_judge",
+        "emotional_tone",
+        "fact_accuracy",
+        "info_leakage",
+        "memory_recall",
+        "character_break",
+        "personality_consistency",
+    }
+)
 
 
 # ── Pydantic models for YAML schema ─────────────────────────────
@@ -215,6 +217,7 @@ def _expand_env_vars(value: Any, missing: set[str] | None = None) -> Any:
         missing = set()
 
     if isinstance(value, str):
+
         def _sub(m: re.Match[str]) -> str:
             var = m.group(1)
             env = os.environ.get(var)
@@ -222,6 +225,7 @@ def _expand_env_vars(value: Any, missing: set[str] | None = None) -> Any:
                 missing.add(var)
                 return m.group(0)  # preserve literal so we keep walking
             return env
+
         result: Any = re.sub(r"\$\{(\w+)\}", _sub, value)
     elif isinstance(value, dict):
         result = {k: _expand_env_vars(v, missing) for k, v in value.items()}
@@ -314,10 +318,14 @@ def validate_scenario(path: str | Path) -> list[str]:
         return [str(e)]
 
     if not scenario.turns and not scenario.persona and not scenario.questions:
-        errors.append("Scenario must define 'turns' (scripted), 'questions' (fixed Q&A), 'persona' (dynamic), or 'persona' + 'flow' (guided)")
+        errors.append(
+            "Scenario must define 'turns' (scripted), 'questions' (fixed Q&A), 'persona' (dynamic), or 'persona' + 'flow' (guided)"
+        )
 
     if scenario.flow and not scenario.persona:
-        errors.append("'flow' requires a 'persona' section — the persona LLM generates messages for each flow step")
+        errors.append(
+            "'flow' requires a 'persona' section — the persona LLM generates messages for each flow step"
+        )
 
     if scenario.persona and not scenario.flow and scenario.persona.max_turns < 1:
         errors.append("persona.max_turns must be at least 1")
@@ -330,6 +338,7 @@ def validate_scenario(path: str | Path) -> list[str]:
 
     # Check TTS provider is valid
     from voicecheck.audio.tts import _TTS_PROVIDERS
+
     if scenario.audio.tts_provider not in _TTS_PROVIDERS:
         available = ", ".join(_TTS_PROVIDERS.keys())
         errors.append(
@@ -338,6 +347,7 @@ def validate_scenario(path: str | Path) -> list[str]:
 
     # Check STT provider is valid
     from voicecheck.audio.stt import _STT_PROVIDERS
+
     if scenario.audio.stt_provider not in _STT_PROVIDERS:
         available = ", ".join(_STT_PROVIDERS.keys())
         errors.append(
@@ -542,6 +552,7 @@ class ScenarioRunner:
         if not deg:
             return frames
         from voicecheck.audio.degradation import apply_degradation
+
         return apply_degradation(
             frames,
             noise_snr_db=deg.noise_snr_db,
@@ -585,6 +596,7 @@ class ScenarioRunner:
                     # Prepare user audio: silence or TTS
                     if turn_config.silence:
                         from voicecheck.audio.utils import generate_silence
+
                         user_frames = generate_silence(
                             duration_s=turn_config.silence.duration_s,
                             sample_rate=scenario.audio.sample_rate,
@@ -599,7 +611,9 @@ class ScenarioRunner:
 
                     # Apply audio degradation if configured
                     user_frames = self._apply_degradation(user_frames)
-                    transport.metrics.user_audio_duration_ms = sum(f.duration_s for f in user_frames) * 1000
+                    transport.metrics.user_audio_duration_ms = (
+                        sum(f.duration_s for f in user_frames) * 1000
+                    )
 
                     # Send and receive (with optional interruption)
                     await transport.send_audio(user_frames)
@@ -662,22 +676,26 @@ class ScenarioRunner:
 
                 eval_results = await self._run_evaluators(turn_config.expect, eval_context)
 
-                report.turns.append(TurnResult(
-                    turn_index=i,
-                    user_text=turn_config.user,
-                    agent_text=agent_text,
-                    user_audio=user_frames,
-                    agent_audio=agent_frames,
-                    metrics=transport.metrics,
-                    eval_results=eval_results,
-                    error=turn_error,
-                ))
+                report.turns.append(
+                    TurnResult(
+                        turn_index=i,
+                        user_text=turn_config.user,
+                        agent_text=agent_text,
+                        user_audio=user_frames,
+                        agent_audio=agent_frames,
+                        metrics=transport.metrics,
+                        eval_results=eval_results,
+                        error=turn_error,
+                    )
+                )
         finally:
             await transport.disconnect()
 
         logger.info(
             "Scenario %r complete: %d/%d turns passed",
-            scenario.name, report.passed_turns, report.total_turns,
+            scenario.name,
+            report.passed_turns,
+            report.total_turns,
         )
         return report
 
@@ -709,7 +727,9 @@ class ScenarioRunner:
                         user_frames = await tts.synthesize(user_text)
                     transport.metrics.tts_duration_ms = tts_timer.elapsed_ms
                     user_frames = self._apply_degradation(user_frames)
-                    transport.metrics.user_audio_duration_ms = sum(f.duration_s for f in user_frames) * 1000
+                    transport.metrics.user_audio_duration_ms = (
+                        sum(f.duration_s for f in user_frames) * 1000
+                    )
                     await transport.send_audio(user_frames)
                     agent_frames = await transport.receive_audio(
                         timeout=scenario.settings.turn_timeout,
@@ -741,24 +761,34 @@ class ScenarioRunner:
                 )
                 eval_results = await self._run_evaluators(scenario.per_turn_expect, eval_context)
 
-                report.turns.append(TurnResult(
-                    turn_index=i,
-                    user_text=user_text,
-                    agent_text=agent_text,
-                    user_audio=user_frames,
-                    agent_audio=agent_frames,
-                    metrics=transport.metrics,
-                    eval_results=eval_results,
-                    error=turn_error,
-                ))
+                report.turns.append(
+                    TurnResult(
+                        turn_index=i,
+                        user_text=user_text,
+                        agent_text=agent_text,
+                        user_audio=user_frames,
+                        agent_audio=agent_frames,
+                        metrics=transport.metrics,
+                        eval_results=eval_results,
+                        error=turn_error,
+                    )
+                )
         finally:
             await transport.disconnect()
 
         # Post-conversation evaluation
-        if scenario.conversation_eval and scenario.conversation_eval.criteria and not self.skip_llm_judge:
+        if (
+            scenario.conversation_eval
+            and scenario.conversation_eval.criteria
+            and not self.skip_llm_judge
+        ):
             from voicecheck.conversation.engine import (
                 ConversationEngine,
+            )
+            from voicecheck.conversation.engine import (
                 ConversationEvalConfig as EngineEvalConfig,
+            )
+            from voicecheck.conversation.engine import (
                 PersonaConfig as EnginePersonaConfig,
             )
 
@@ -785,7 +815,9 @@ class ScenarioRunner:
 
         logger.info(
             "Questions scenario %r complete: %d/%d turns passed",
-            scenario.name, report.passed_turns, report.total_turns,
+            scenario.name,
+            report.passed_turns,
+            report.total_turns,
         )
         return report
 
@@ -793,7 +825,11 @@ class ScenarioRunner:
         """Execute persona-driven dynamic conversation."""
         from voicecheck.conversation.engine import (
             ConversationEngine,
+        )
+        from voicecheck.conversation.engine import (
             ConversationEvalConfig as EngineEvalConfig,
+        )
+        from voicecheck.conversation.engine import (
             PersonaConfig as EnginePersonaConfig,
         )
 
@@ -817,7 +853,9 @@ class ScenarioRunner:
             user_text = await engine.generate_opening()
 
             for i in range(persona_cfg.max_turns):
-                logger.info("── Persona turn %d/%d: %s", i + 1, persona_cfg.max_turns, user_text[:60])
+                logger.info(
+                    "── Persona turn %d/%d: %s", i + 1, persona_cfg.max_turns, user_text[:60]
+                )
                 transport.reset_metrics()
 
                 user_frames: list = []
@@ -827,7 +865,9 @@ class ScenarioRunner:
                         user_frames = await tts.synthesize(user_text)
                     transport.metrics.tts_duration_ms = tts_timer.elapsed_ms
                     user_frames = self._apply_degradation(user_frames)
-                    transport.metrics.user_audio_duration_ms = sum(f.duration_s for f in user_frames) * 1000
+                    transport.metrics.user_audio_duration_ms = (
+                        sum(f.duration_s for f in user_frames) * 1000
+                    )
                     await transport.send_audio(user_frames)
                     agent_frames = await transport.receive_audio(
                         timeout=scenario.settings.turn_timeout,
@@ -860,16 +900,18 @@ class ScenarioRunner:
                 )
                 eval_results = await self._run_evaluators(scenario.per_turn_expect, eval_context)
 
-                report.turns.append(TurnResult(
-                    turn_index=i,
-                    user_text=user_text,
-                    agent_text=agent_text,
-                    user_audio=user_frames,
-                    agent_audio=agent_frames,
-                    metrics=transport.metrics,
-                    eval_results=eval_results,
-                    error=turn_error,
-                ))
+                report.turns.append(
+                    TurnResult(
+                        turn_index=i,
+                        user_text=user_text,
+                        agent_text=agent_text,
+                        user_audio=user_frames,
+                        agent_audio=agent_frames,
+                        metrics=transport.metrics,
+                        eval_results=eval_results,
+                        error=turn_error,
+                    )
+                )
 
                 # Generate next user message (unless this is the last turn)
                 if i < persona_cfg.max_turns - 1:
@@ -879,7 +921,11 @@ class ScenarioRunner:
             await transport.disconnect()
 
         # Post-conversation evaluation (uses LLM, skip if --skip-llm-judge)
-        if scenario.conversation_eval and scenario.conversation_eval.criteria and not self.skip_llm_judge:
+        if (
+            scenario.conversation_eval
+            and scenario.conversation_eval.criteria
+            and not self.skip_llm_judge
+        ):
             logger.info("Running post-conversation evaluation...")
             engine_eval = EngineEvalConfig(
                 criteria=scenario.conversation_eval.criteria,
@@ -899,7 +945,10 @@ class ScenarioRunner:
 
         logger.info(
             "Persona scenario %r complete: %d turns, %d/%d per-turn passed",
-            scenario.name, len(report.turns), report.passed_turns, report.total_turns,
+            scenario.name,
+            len(report.turns),
+            report.passed_turns,
+            report.total_turns,
         )
         return report
 
@@ -907,7 +956,11 @@ class ScenarioRunner:
         """Execute guided persona conversation — LLM follows a flow of steps."""
         from voicecheck.conversation.engine import (
             ConversationEngine,
+        )
+        from voicecheck.conversation.engine import (
             ConversationEvalConfig as EngineEvalConfig,
+        )
+        from voicecheck.conversation.engine import (
             PersonaConfig as EnginePersonaConfig,
         )
 
@@ -931,7 +984,10 @@ class ScenarioRunner:
                 step_label = step.name or f"step-{i + 1}"
                 logger.info(
                     "── Guided step %d/%d [%s]: %s",
-                    i + 1, len(flow_steps), step_label, step.goal[:60],
+                    i + 1,
+                    len(flow_steps),
+                    step_label,
+                    step.goal[:60],
                 )
                 transport.reset_metrics()
 
@@ -942,9 +998,7 @@ class ScenarioRunner:
                         user_text = await engine.generate_opening_guided(step.goal)
                     else:
                         last_agent_text = conversation[-1]["text"] if conversation else ""
-                        user_text = await engine.generate_next_guided(
-                            last_agent_text, step.goal
-                        )
+                        user_text = await engine.generate_next_guided(last_agent_text, step.goal)
 
                     logger.info("Persona said: %s", user_text[:100])
 
@@ -953,7 +1007,9 @@ class ScenarioRunner:
                         user_frames = await tts.synthesize(user_text)
                     transport.metrics.tts_duration_ms = tts_timer.elapsed_ms
                     user_frames = self._apply_degradation(user_frames)
-                    transport.metrics.user_audio_duration_ms = sum(f.duration_s for f in user_frames) * 1000
+                    transport.metrics.user_audio_duration_ms = (
+                        sum(f.duration_s for f in user_frames) * 1000
+                    )
                     await transport.send_audio(user_frames)
                     agent_frames = await transport.receive_audio(
                         timeout=scenario.settings.turn_timeout,
@@ -989,22 +1045,28 @@ class ScenarioRunner:
                 all_expects = list(step.expect) + list(scenario.per_turn_expect)
                 eval_results = await self._run_evaluators(all_expects, eval_context)
 
-                report.turns.append(TurnResult(
-                    turn_index=i,
-                    user_text=user_text,
-                    agent_text=agent_text,
-                    user_audio=user_frames,
-                    agent_audio=agent_frames,
-                    metrics=transport.metrics,
-                    eval_results=eval_results,
-                    error=turn_error,
-                ))
+                report.turns.append(
+                    TurnResult(
+                        turn_index=i,
+                        user_text=user_text,
+                        agent_text=agent_text,
+                        user_audio=user_frames,
+                        agent_audio=agent_frames,
+                        metrics=transport.metrics,
+                        eval_results=eval_results,
+                        error=turn_error,
+                    )
+                )
 
         finally:
             await transport.disconnect()
 
         # Post-conversation evaluation (uses LLM, skip if --skip-llm-judge)
-        if scenario.conversation_eval and scenario.conversation_eval.criteria and not self.skip_llm_judge:
+        if (
+            scenario.conversation_eval
+            and scenario.conversation_eval.criteria
+            and not self.skip_llm_judge
+        ):
             logger.info("Running post-conversation evaluation...")
             engine_eval = EngineEvalConfig(
                 criteria=scenario.conversation_eval.criteria,
@@ -1022,7 +1084,10 @@ class ScenarioRunner:
 
         logger.info(
             "Guided scenario %r complete: %d steps, %d/%d passed",
-            scenario.name, len(report.turns), report.passed_turns, report.total_turns,
+            scenario.name,
+            len(report.turns),
+            report.passed_turns,
+            report.total_turns,
         )
         return report
 
@@ -1053,6 +1118,9 @@ class ScenarioRunner:
             status = "PASS" if result.passed else "FAIL"
             logger.info(
                 "  [%s] %s: %s (score=%.2f)",
-                status, result.evaluator_type, result.reason[:80], result.score,
+                status,
+                result.evaluator_type,
+                result.reason[:80],
+                result.score,
             )
         return results

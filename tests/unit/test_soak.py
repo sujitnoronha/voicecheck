@@ -7,9 +7,8 @@ import io
 import pytest
 
 from voicecheck.core.scenario import ScenarioReport
-from voicecheck.core.soak import SoakResult, SoakSummary, build_soak_summary, print_soak_summary
+from voicecheck.core.soak import SoakResult, build_soak_summary, print_soak_summary
 from voicecheck.core.types import TransportMetrics, TurnResult
-
 
 # ── helpers ──────────────────────────────────────────────────────
 
@@ -25,7 +24,9 @@ def _make_metrics(first_byte_ms: float = 200, total_ms: float = 500) -> Transpor
     )
 
 
-def _make_turn(index: int = 0, passed: bool = True, first_byte_ms: float = 200, total_ms: float = 500) -> TurnResult:
+def _make_turn(
+    index: int = 0, passed: bool = True, first_byte_ms: float = 200, total_ms: float = 500
+) -> TurnResult:
     return TurnResult(
         turn_index=index,
         user_text=f"turn {index} text",
@@ -35,8 +36,13 @@ def _make_turn(index: int = 0, passed: bool = True, first_byte_ms: float = 200, 
     )
 
 
-def _make_report(name: str = "test_scenario", num_turns: int = 2, all_pass: bool = True) -> ScenarioReport:
-    turns = [_make_turn(i, passed=all_pass, first_byte_ms=200 + i * 50, total_ms=500 + i * 100) for i in range(num_turns)]
+def _make_report(
+    name: str = "test_scenario", num_turns: int = 2, all_pass: bool = True
+) -> ScenarioReport:
+    turns = [
+        _make_turn(i, passed=all_pass, first_byte_ms=200 + i * 50, total_ms=500 + i * 100)
+        for i in range(num_turns)
+    ]
     return ScenarioReport(scenario_name=name, turns=turns)
 
 
@@ -185,25 +191,31 @@ class TestPrintSoakSummary:
 class TestParseDuration:
     def test_minutes(self):
         from voicecheck.cli import _parse_duration
+
         assert _parse_duration("20m") == 1200
 
     def test_hours(self):
         from voicecheck.cli import _parse_duration
+
         assert _parse_duration("1h") == 3600
 
     def test_seconds(self):
         from voicecheck.cli import _parse_duration
+
         assert _parse_duration("90s") == 90
 
     def test_bare_number_is_seconds(self):
         from voicecheck.cli import _parse_duration
+
         assert _parse_duration("120") == 120
 
     def test_invalid_raises(self):
         from voicecheck.cli import _parse_duration
+
         with pytest.raises(Exception):
             _parse_duration("abc")
 
     def test_whitespace_handling(self):
         from voicecheck.cli import _parse_duration
+
         assert _parse_duration("  30m  ") == 1800

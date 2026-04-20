@@ -123,9 +123,9 @@ def print_soak_summary(summary: SoakSummary, file: TextIO | None = None) -> None
 
     minutes = summary.duration_seconds / 60
 
-    out.write(f"\n{'='*60}\n")
-    out.write(f"  SOAK TEST SUMMARY\n")
-    out.write(f"{'='*60}\n\n")
+    out.write(f"\n{'=' * 60}\n")
+    out.write("  SOAK TEST SUMMARY\n")
+    out.write(f"{'=' * 60}\n\n")
 
     out.write(f"  Duration:      {minutes:.1f} minutes\n")
     out.write(f"  Iterations:    {summary.total_iterations}\n")
@@ -134,25 +134,23 @@ def print_soak_summary(summary: SoakSummary, file: TextIO | None = None) -> None
     out.write(f"  Failed:        {summary.failed_runs}\n")
     out.write(f"  Errors:        {summary.error_runs}\n")
     out.write(f"  Pass rate:     {summary.pass_rate:.1f}%\n")
-    out.write(f"\n")
+    out.write("\n")
     out.write(f"  Turns:         {summary.passed_turns}/{summary.total_turns} passed\n")
     out.write(f"  Avg latency:   {summary.avg_first_byte_ms:.0f}ms (first byte)\n")
     out.write(f"  P95 latency:   {summary.p95_first_byte_ms:.0f}ms (first byte)\n")
     out.write(f"  Avg total:     {summary.avg_total_ms:.0f}ms\n")
 
     if summary.per_scenario:
-        out.write(f"\n  Per-scenario breakdown:\n")
-        out.write(f"  {'-'*50}\n")
+        out.write("\n  Per-scenario breakdown:\n")
+        out.write(f"  {'-' * 50}\n")
         for name, ps in summary.per_scenario.items():
             rate = (ps["passed"] / ps["runs"] * 100) if ps["runs"] else 0
             avg_fb = (
-                sum(ps["first_byte_ms"]) / len(ps["first_byte_ms"])
-                if ps["first_byte_ms"]
-                else 0
+                sum(ps["first_byte_ms"]) / len(ps["first_byte_ms"]) if ps["first_byte_ms"] else 0
             )
             out.write(
                 f"  {name:<30} {ps['passed']}/{ps['runs']} passed "
                 f"({rate:.0f}%) avg={avg_fb:.0f}ms\n"
             )
 
-    out.write(f"\n{'='*60}\n")
+    out.write(f"\n{'=' * 60}\n")

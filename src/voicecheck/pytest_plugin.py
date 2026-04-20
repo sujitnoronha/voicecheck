@@ -15,7 +15,6 @@ Or programmatic:
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 import pytest
 
@@ -27,9 +26,7 @@ def pytest_configure(config: pytest.Config) -> None:
     )
 
 
-def pytest_collection_modifyitems(
-    config: pytest.Config, items: list[pytest.Item]
-) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     for item in items:
         marker = item.get_closest_marker("voicecheck")
         if marker is not None:
@@ -65,9 +62,10 @@ def pytest_runtest_call(item: pytest.Item) -> None:
             pass
 
     # Ensure evaluator registrations
-    import voicecheck.evaluators.latency  # noqa: F401
     import voicecheck.evaluators.keyword  # noqa: F401
+    import voicecheck.evaluators.latency  # noqa: F401
     import voicecheck.evaluators.turn_count  # noqa: F401
+
     for _eval_mod in (
         "voicecheck.evaluators.llm_judge",
         "voicecheck.evaluators.rubric_judge",
@@ -108,8 +106,7 @@ def pytest_runtest_call(item: pytest.Item) -> None:
             for result in turn.eval_results:
                 if not result.passed:
                     failures.append(
-                        f"Turn {turn.turn_index + 1} [{result.evaluator_type}]: "
-                        f"{result.reason}"
+                        f"Turn {turn.turn_index + 1} [{result.evaluator_type}]: {result.reason}"
                     )
         pytest.fail(
             f"VoiceCheck scenario {report.scenario_name!r} failed:\n"
