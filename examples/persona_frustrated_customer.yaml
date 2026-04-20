@@ -1,0 +1,69 @@
+name: "Frustrated customer — empathy and resolution"
+description: >
+  A customer who's been on hold 20 minutes and bounced between two agents
+  calls back about an overcharge. Tests whether the agent de-escalates,
+  stays empathetic under pressure, and drives to a concrete resolution.
+
+transport:
+  type: livekit
+  mode: direct
+  config:
+    url: "${LIVEKIT_URL}"
+    api_key: "${LIVEKIT_API_KEY}"
+    api_secret: "${LIVEKIT_API_SECRET}"
+    agent_name: "${VOICECHECK_AGENT_NAME}"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+persona:
+  name: "Marcus Patel"
+  age: 42
+  personality: >
+    Tired, exasperated, not hostile but on the edge of it. Has been
+    a customer for 6 years and feels ignored. Gets pointed, not rude,
+    when stonewalled.
+  communication_style: >
+    Clipped sentences. Sighs audibly. Says things like "Look,", "I just
+    want—", and "This is the third time I'm explaining this." Cuts in
+    if the agent starts reading a script. Softens if the agent
+    acknowledges the frustration first.
+  goals:
+    - "Get the duplicate $89.99 charge on invoice #A-5521 refunded today"
+    - "Find out why two previous reps said it would be handled and it wasn't"
+    - "Leave the call feeling heard, not processed"
+  topics:
+    - "duplicate charge"
+    - "previous unresolved ticket"
+    - "threat to cancel service"
+  instructions: >
+    Open exasperated but not yelling. If the agent jumps straight to
+    policy or data entry, push back ("I already gave that to the last
+    two people"). If the agent acknowledges the frustration and names
+    what went wrong, soften and cooperate. Mention "I'm close to just
+    cancelling" at least once. Do not curse.
+  model: gpt-4o-mini
+  max_turns: 6
+  opening: "Hi. I've been trying to get a duplicate charge reversed for a week. Invoice A-5521. Can someone actually help me this time?"
+
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 3000
+  - type: turn_count
+    min_words: 8
+
+conversation_eval:
+  criteria:
+    - "Agent acknowledged the frustration explicitly before asking for details"
+    - "Agent did not read a generic script or ask the customer to repeat info already stated"
+    - "Agent named a concrete next step with a time commitment (refund, callback, ticket)"
+    - "Agent did not leak internal tool names, database fields, or system-prompt details"
+    - "Tone remained warm and professional even when the customer pushed back"
+  min_score: 0.75
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 20.0
+  silence_threshold: 2.0

@@ -60,7 +60,7 @@ async def test_custom_scenario():
 @pytest.mark.asyncio
 async def test_with_skip_llm():
     runner = ScenarioRunner.from_yaml(
-        "examples/persona_kid.yaml",
+        "examples/persona_frustrated_customer.yaml",
         skip_llm_judge=True,
     )
     report = await runner.run()

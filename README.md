@@ -864,7 +864,7 @@ See the [examples/](examples/) directory:
 - **[daily_basic.yaml](examples/daily_basic.yaml)** — Daily/Pipecat scripted test
 - **[vapi_web_call.yaml](examples/vapi_web_call.yaml)** — VAPI web call test
 - **[retell_web_call.yaml](examples/retell_web_call.yaml)** — Retell web call test
-- **[persona_kid.yaml](examples/persona_kid.yaml)** — Persona mode with a curious 7-year-old
+- **[persona_frustrated_customer.yaml](examples/persona_frustrated_customer.yaml)** — Persona mode with an exasperated support caller, testing de-escalation and resolution
 - **[livekit_token_server.yaml](examples/livekit_token_server.yaml)** — Token server integration
 - **[e2e_questions.yaml](examples/e2e_questions.yaml)** — Questions mode with shared evaluators
 - **[guided_luna_test.yaml](examples/guided_luna_test.yaml)** — Guided flow mode
