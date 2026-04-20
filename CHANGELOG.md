@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.1
+
+- Replace kid-specific `persona_kid.yaml` example with `persona_frustrated_customer.yaml` — a broader de-escalation / empathy / resolution scenario.
+- Polish README hero, add "Why VoiceCheck" section, fill missing env vars in `.env.example`.
+- Dashboard first-version polish: KPI hero row, relative time on cards, percentile mini-row, nav brand mark, empty-state quick-start. Fix compare page duplicate-column bug.
+- Add 7 industry example scenarios under `examples/industries/` (banking, healthcare, insurance, e-commerce, hotel, restaurant, appointment).
+- Remove internal `ROADMAP.md` and untrack `RELEASING.md` (maintainer-only).
+- Untrack `.claude/` local tooling state.
+- Satisfy ruff lint + format for CI.
+
+## 0.1.0
 
 Initial release of VoiceCheck — E2E testing framework for voice agents.
 
