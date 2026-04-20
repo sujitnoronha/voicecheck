@@ -62,7 +62,9 @@ Turn 1: [PASS]
 | | |
 |---|---|
 | **4 transports** | LiveKit, Daily/Pipecat, VAPI, Retell + [write your own](docs/reference/python-api.md#creating-a-custom-transport) |
-| **6 evaluators** | latency, keyword, turn_count, llm_judge, emotional_tone + [custom](docs/guides/evaluators.md#creating-custom-evaluators) |
+| **11 evaluators** | latency, keyword, turn_count, llm_judge, rubric_judge, emotional_tone, fact_accuracy, info_leakage, memory_recall, character_break, personality_consistency + [custom](docs/guides/evaluators.md#creating-custom-evaluators) |
+| **Commercial metrics library** | Preset dimensions for `rubric_judge`: task completion, PII handling, policy compliance, brand voice, empathy, and 7 more |
+| **Industry examples** | [examples/industries/](examples/industries) — banking, healthcare, insurance, e-commerce, hotel, restaurant, appointment booking |
 | **4 test modes** | Scripted, questions, persona (LLM-driven), guided flow |
 | **18 languages** | Auto TTS voice + STT selection via `audio.language: "es"` |
 | **Audio degradation** | Noise injection, bandwidth reduction, packet loss, codec artifacts |
@@ -85,6 +87,19 @@ Turn 1: [PASS]
 - Multi-language TTS/STT quality degradation
 - Interruption (barge-in) handling
 - Emotional tone drift across long conversations
+
+## Why VoiceCheck
+
+- **Runs on your laptop. Data stays yours.** No SaaS, no cloud upload, no demo call with sales. Call audio, transcripts, and results live in a local SQLite DB — works for HIPAA, finance, and anything else that can't ship audio to a third party.
+- **YAML you can commit.** Scenarios are plain files. Diff them in PRs, template them across environments, parameterize with `${ENV_VAR}`. No point-and-click UI to screenshot into your runbook.
+- **One config, every transport.** Swap `transport: livekit` for `retell`, `vapi`, or `daily` — the rest of the scenario is identical. Retell's 24kHz ↔ 16kHz resampling is handled for you.
+- **Audio chaos is a first-class knob.** Packet loss, SNR, narrowband bandwidth, G.711 codec artifacts — four lines of YAML. Pure Python DSP means it runs in any CI container with no `ffmpeg`, `sox`, or numpy install.
+- **Personas that act like real users.** An LLM drives the user side with age, personality, goals, and communication style — so tests surface the edge cases a scripted turn list would never hit. Combine with `flow:` steps for goal-driven adversarial probes.
+- **pytest-native.** `@pytest.mark.voicecheck("scenario.yaml")` is a regular test case. Runs in CI, fails the build, trends in your SQLite history across branches.
+- **Evaluators built for voice agents, not chatbots.** `character_break` catches roleplay agents admitting they're AI. `info_leakage` scans for system-prompt and tool-name disclosures. `rubric_judge` ships 14 commercial presets (PII handling, prompt-injection resistance, empathy, closure, brand voice…) with configurable weights.
+- **Load, soak, and chaos in the same file.** `--concurrent 20 --duration 1h` plus a `degradation:` block runs 20 simultaneous sessions for an hour through a lossy codec. One YAML, not three tools.
+- **Fast iteration loop.** `--skip-llm-judge` runs the full audio pipeline without burning judge API credits. Echo transport (`examples/echo_smoke.yaml`) smoke-tests your YAML schema with zero API keys.
+- **Free and open source.** MIT, no seat caps, no credit quota, no "contact us for pricing."
 
 ## Install
 
@@ -113,6 +128,19 @@ pip install voicecheck[daily,tts,stt]        # Daily/Pipecat + Edge TTS + local 
 | `dashboard` | `fastapi`, `uvicorn`, `jinja2` | Live web dashboard |
 
 ## Quick Start
+
+### 0. Zero-setup smoke test (optional)
+
+Before wiring up a real agent, verify your install with the built-in echo transport:
+
+```bash
+pip install voicecheck[tts,stt]
+voicecheck run examples/echo_smoke.yaml --skip-llm-judge
+```
+
+Echo returns a canned agent response after a configurable delay — no
+API keys, no real agent, no tokens burned. Use it to smoke-test YAML
+schema, evaluator registration, and the scenario pipeline.
 
 ### 1. Set environment variables
 
