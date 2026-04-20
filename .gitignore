@@ -39,3 +39,6 @@ Thumbs.db
 
 # Local-only docs (not published)
 RELEASING.md
+
+# Claude Code local state
+.claude/
