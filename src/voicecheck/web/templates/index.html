@@ -5,10 +5,17 @@
 <div class="page-header">
   <div>
     <h1>Scenarios</h1>
-    <p class="page-subtitle">Voice agent E2E test results</p>
+    <p class="page-subtitle">Voice agent end-to-end test results</p>
+  </div>
+  <div class="page-actions">
+    <a href="/compare" class="btn btn-ghost">Compare</a>
+    <a href="/runs" class="btn btn-ghost">All runs</a>
   </div>
 </div>
 
+<div id="kpi-row" class="kpi-row"></div>
+
+<h2 class="section-title">Scenarios</h2>
 <div id="scenarios-grid" class="grid">
   <div class="loading"><div class="spinner"></div><br>Loading scenarios...</div>
 </div>
@@ -18,14 +25,51 @@
 <script>
 (async function() {
   const grid = document.getElementById('scenarios-grid');
+  const kpi = document.getElementById('kpi-row');
 
   try {
     const scenarios = await VC.fetchAPI('/api/scenarios');
 
     if (!scenarios.length) {
-      grid.innerHTML = '<div class="empty">No test results yet. Run <code>voicecheck run</code> to generate data.</div>';
+      kpi.innerHTML = '';
+      grid.innerHTML = `
+        <div class="empty empty-hero">
+          <div class="empty-icon" aria-hidden="true">◎</div>
+          <h3>No test results yet</h3>
+          <p>Run a scenario to populate this dashboard.</p>
+          <pre><code>voicecheck run examples/echo_smoke.yaml --skip-llm-judge</code></pre>
+        </div>`;
       return;
     }
+
+    // ── KPI hero ────────────────────────────────────
+    const totalRuns = scenarios.reduce((a, s) => a + (s.run_count || 0), 0);
+    const totalPasses = scenarios.reduce((a, s) => a + (s.pass_count || 0), 0);
+    const overallRate = totalRuns ? (totalPasses / totalRuns) * 100 : 0;
+    const p95s = scenarios.map(s => s.p95_first_byte_ms || 0).filter(x => x > 0);
+    const worstP95 = p95s.length ? Math.max(...p95s) : 0;
+    const medianP95 = p95s.length
+      ? [...p95s].sort((a, b) => a - b)[Math.floor(p95s.length / 2)]
+      : 0;
+
+    kpi.innerHTML = `
+      <div class="kpi">
+        <div class="kpi-label">Scenarios</div>
+        <div class="kpi-value">${scenarios.length}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Runs</div>
+        <div class="kpi-value">${totalRuns}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Overall pass rate</div>
+        <div class="kpi-value ${VC.rateClass(overallRate)}">${overallRate.toFixed(0)}%</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Median P95 first byte</div>
+        <div class="kpi-value ${VC.latencyClass(medianP95)}">${VC.formatMs(medianP95)}</div>
+        <div class="kpi-sub">worst ${VC.formatMs(worstP95)}</div>
+      </div>`;
 
     grid.innerHTML = '';
 
@@ -40,34 +84,28 @@
       card.onclick = () => VC.go('/scenario/' + encodeURIComponent(s.scenario_name));
 
       card.innerHTML = `
-        <h2>${VC.esc(s.scenario_name)}</h2>
+        <div class="card-head">
+          <h2>${VC.esc(s.scenario_name)}</h2>
+          <span class="muted small">${VC.relTime(s.last_run)}</span>
+        </div>
         <div class="stats">
           <div class="stat">
             <div class="stat-value ${rateClass}">${passRate.toFixed(0)}%</div>
-            <div class="stat-label">Pass Rate</div>
+            <div class="stat-label">Pass rate</div>
           </div>
           <div class="stat">
-            <div class="stat-value ${latClass}">${Math.round(s.avg_latency || 0)}<span style="font-size:0.7em">ms</span></div>
-            <div class="stat-label">Avg Latency</div>
+            <div class="stat-value ${latClass}">${Math.round(s.avg_latency || 0)}<span class="unit">ms</span></div>
+            <div class="stat-label">Avg latency</div>
           </div>
           <div class="stat">
             <div class="stat-value">${s.run_count}</div>
             <div class="stat-label">Runs</div>
           </div>
         </div>
-        <div class="stats" style="margin-top: 0;">
-          <div class="stat">
-            <div class="stat-value" style="font-size:1.1rem;">${VC.formatMs(s.p50_first_byte_ms)}</div>
-            <div class="stat-label">P50</div>
-          </div>
-          <div class="stat">
-            <div class="stat-value" style="font-size:1.1rem;">${VC.formatMs(s.p95_first_byte_ms)}</div>
-            <div class="stat-label">P95</div>
-          </div>
-          <div class="stat">
-            <div class="stat-value" style="font-size:1.1rem;">${VC.formatMs(s.p99_first_byte_ms)}</div>
-            <div class="stat-label">P99</div>
-          </div>
+        <div class="percentile-row">
+          <div class="pct"><span class="pct-label">P50</span><span class="pct-val">${VC.formatMs(s.p50_first_byte_ms)}</span></div>
+          <div class="pct"><span class="pct-label">P95</span><span class="pct-val ${VC.latencyClass(s.p95_first_byte_ms)}">${VC.formatMs(s.p95_first_byte_ms)}</span></div>
+          <div class="pct"><span class="pct-label">P99</span><span class="pct-val ${VC.latencyClass(s.p99_first_byte_ms)}">${VC.formatMs(s.p99_first_byte_ms)}</span></div>
         </div>
         <div id="timeline_${chartId}" class="timeline"></div>
         <div class="chart-container"><canvas id="${chartId}"></canvas></div>

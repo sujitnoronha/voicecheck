@@ -38,16 +38,15 @@
       <thead><tr>
         <th>Scenario</th>
         <th>Runs</th>
-        <th>Pass Rate</th>
-        <th>Avg First Byte</th>
+        <th>Pass rate</th>
+        <th>Avg first byte</th>
         <th>P50</th>
         <th>P95</th>
         <th>P99</th>
-        <th>Avg Total</th>
-        <th>P50 Total</th>
-        <th>P95 Total</th>
-        <th>P99 Total</th>
-        <th>Last Run</th>
+        <th>P50 total</th>
+        <th>P95 total</th>
+        <th>P99 total</th>
+        <th>Last run</th>
       </tr></thead><tbody>`;
 
     for (const s of scenarios) {
@@ -61,7 +60,6 @@
         <td class="${VC.latencyClass(s.p50_first_byte_ms)}">${VC.formatMs(s.p50_first_byte_ms)}</td>
         <td class="${VC.latencyClass(s.p95_first_byte_ms)}">${VC.formatMs(s.p95_first_byte_ms)}</td>
         <td class="${VC.latencyClass(s.p99_first_byte_ms)}">${VC.formatMs(s.p99_first_byte_ms)}</td>
-        <td class="${VC.latencyClass(s.p50_total_ms)}">${VC.formatMs(s.p50_total_ms)}</td>
         <td class="${VC.latencyClass(s.p50_total_ms)}">${VC.formatMs(s.p50_total_ms)}</td>
         <td class="${VC.latencyClass(s.p95_total_ms)}">${VC.formatMs(s.p95_total_ms)}</td>
         <td class="${VC.latencyClass(s.p99_total_ms)}">${VC.formatMs(s.p99_total_ms)}</td>

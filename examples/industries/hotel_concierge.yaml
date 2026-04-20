@@ -1,0 +1,115 @@
+name: "Hotel concierge — multi-intent guest services"
+description: >
+  Marcus arrives late, asks for a quiet dinner rec, a 9am spa booking, and
+  a 6am car. Tests multi-intent handling in one turn, factual grounding vs.
+  hallucinating restaurants, conciseness under voice, and graceful scope
+  refusal.
+
+transport:
+  type: livekit
+  mode: direct
+  config:
+    url: "${LIVEKIT_URL}"
+    api_key: "${LIVEKIT_API_KEY}"
+    api_secret: "${LIVEKIT_API_SECRET}"
+    agent_name: "${VOICECHECK_AGENT_NAME}"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+persona:
+  name: "Marcus"
+  age: 44
+  personality: "polite, tired, wants things done efficiently"
+  communication_style: "compact sentences, willing to rattle off a list"
+  instructions: >
+    You just landed after a long flight. You are staying in Room 914. You
+    want: (1) a quiet nearby dinner recommendation, (2) a spa booking at
+    9am tomorrow, (3) a car to the airport at 6am the next day.
+  model: gpt-4o-mini
+
+flow:
+  - name: "multi-intent-dump"
+    goal: >
+      Say hi, say you just arrived and are tired, and ask for all three things
+      at once: quiet dinner rec, 9am spa, 6am airport car.
+    expect:
+      - type: rubric_judge
+        min_overall_score: 0.85
+        weighting: weighted
+        known_facts:
+          - "Pier 9: seafood, 5-10pm, quiet, walkable."
+          - "Tavola: italian, 5:30-10pm, lively, walkable."
+          - "Kobu: izakaya, 6-11pm, quiet, walkable."
+          - "Spa hours: 8am-8pm daily."
+          - "Airport is 45 minutes away."
+        false_facts:
+          - "Any restaurant recommendation not on the partner list."
+        dimensions:
+          - name: multi_intent_captured
+            description: "Agent acknowledged all three requests in one turn."
+            prompt_guidance: "Fail if the agent only addressed 1 or 2 of dinner/spa/car."
+            min_score: 0.9
+            weight: 2.0
+          - empathy
+          - conciseness_for_voice
+
+  - name: "restaurant-rec"
+    goal: "Ask the agent to narrow to one quiet dinner rec."
+    expect:
+      - type: fact_accuracy
+        known_facts:
+          - "Pier 9 is a quiet seafood restaurant open 5-10pm, walkable from the hotel."
+          - "Kobu is a quiet izakaya open 6-11pm, walkable from the hotel."
+          - "Tavola is italian, 5:30-10pm, lively — not quiet."
+        false_facts:
+          - "There is an all-night diner next door."
+          - "Any restaurant not on the partner list."
+        min_score: 0.9
+      - type: rubric_judge
+        min_overall_score: 0.85
+        dimensions:
+          - conciseness_for_voice
+          - disambiguation
+
+  - name: "out-of-scope"
+    goal: "Ask to be upgraded to a suite."
+    expect:
+      - type: rubric_judge
+        min_overall_score: 0.85
+        policy: >
+          Concierge cannot authorize room upgrades. Offer to transfer the
+          caller to the front desk for upgrade requests.
+        dimensions:
+          - {name: policy_compliance, min_score: 1.0}
+          - escalation_appropriateness
+
+  - name: "confirm-all"
+    goal: "Confirm the spa time and car time back to the agent and wrap up."
+    expect:
+      - type: rubric_judge
+        min_overall_score: 0.9
+        weighting: min
+        dimensions:
+          - task_completion
+          - closure
+          - conciseness_for_voice
+
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 4000
+
+conversation_eval:
+  criteria:
+    - "Agent acknowledged all three intents from the opening turn"
+    - "Agent recommended a real partner restaurant from the ground-truth list"
+    - "Agent kept every response under 3 sentences"
+    - "Agent transferred the room-upgrade request instead of promising it"
+  min_score: 0.85
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 20.0
+  silence_threshold: 2.0

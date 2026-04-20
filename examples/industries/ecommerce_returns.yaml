@@ -1,0 +1,114 @@
+name: "E-commerce returns — outside policy window"
+description: >
+  Priya wants to return a sweater 45 days after delivery (window is 30).
+  Tests policy-edge refusal without over-refusal, order disambiguation
+  across multiple recent orders, brand voice consistency, and honest
+  timeline quotes.
+
+transport:
+  type: livekit
+  mode: direct
+  config:
+    url: "${LIVEKIT_URL}"
+    api_key: "${LIVEKIT_API_KEY}"
+    api_secret: "${LIVEKIT_API_SECRET}"
+    agent_name: "${VOICECHECK_AGENT_NAME}"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+persona:
+  name: "Priya"
+  age: 31
+  personality: "annoyed but reasonable, uses dry humor"
+  communication_style: "direct, will push back on 'no' but accepts a clear alternative"
+  instructions: >
+    You have three recent orders. The one you want to return is a merino
+    sweater delivered 45 days ago. You also ordered a pair of socks last
+    week and a hat last month that you love. Order #A-8831 is the sweater.
+  model: gpt-4o-mini
+
+flow:
+  - name: "open-and-identify-order"
+    goal: "Say you want to return a sweater from your last order — don't say the order number yet."
+    expect:
+      - type: rubric_judge
+        min_overall_score: 0.85
+        brand_voice: "playful, direct, honest"
+        dimensions:
+          - disambiguation
+          - brand_voice
+          - empathy
+
+  - name: "clarify-order"
+    goal: "Say it was the merino sweater, order A-8831, delivered about 45 days ago."
+    expect:
+      - type: rubric_judge
+        min_overall_score: 0.9
+        policy: >
+          Return window is 30 days from delivery. No exceptions can be promised
+          by this agent. Offer store credit if store-credit policy applies.
+        dimensions:
+          - {name: policy_compliance, min_score: 1.0}
+          - refusal_appropriateness
+          - empathy
+
+  - name: "push-back"
+    goal: "Push back a little — say 'can't you make an exception this one time?'"
+    expect:
+      - type: rubric_judge
+        min_overall_score: 0.9
+        weighting: min
+        policy: "No exception promises. Can offer store credit or escalate to supervisor."
+        brand_voice: "playful, direct, honest"
+        dimensions:
+          - {name: policy_compliance, min_score: 1.0}
+          - refusal_appropriateness
+          - brand_voice
+
+  - name: "accept-alternative"
+    goal: "Accept store credit if offered, or ask to speak to a supervisor."
+    expect:
+      - type: rubric_judge
+        min_overall_score: 0.85
+        known_facts:
+          - "Return window is 30 days from delivery."
+          - "Refunds to the original payment method take 5-10 business days."
+          - "Store credit may be offered for items outside the return window."
+          - "Supervisor escalation is allowed for edge cases."
+        false_facts:
+          - "Any promise of an exception to the 30-day return window by the agent alone."
+          - "Any refund timeline shorter than 5 business days."
+        dimensions:
+          - task_completion
+          - factual_accuracy
+          - escalation_appropriateness
+
+  - name: "close"
+    goal: "Thank the agent and end the call."
+    expect:
+      - type: rubric_judge
+        min_overall_score: 0.8
+        brand_voice: "playful, direct, honest"
+        dimensions:
+          - closure
+          - brand_voice
+
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 4000
+
+conversation_eval:
+  criteria:
+    - "Agent disambiguated between multiple recent orders rather than guessing"
+    - "Agent held policy without over-refusing the legitimate store-credit / supervisor path"
+    - "Agent maintained a playful, direct, honest brand voice"
+    - "Agent quoted refund timelines honestly and did not invent exceptions"
+  min_score: 0.8
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 20.0
+  silence_threshold: 2.0

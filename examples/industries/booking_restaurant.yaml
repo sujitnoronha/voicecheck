@@ -1,0 +1,116 @@
+name: "Restaurant reservation — booking agent"
+description: >
+  Jamie books a birthday dinner for 6 on Saturday at 7:30pm, mentions a nut
+  allergy, asks about outdoor seating. Tests slot-filling completeness,
+  date disambiguation, allergy memory across turns, and closing read-back.
+
+transport:
+  type: livekit
+  mode: direct
+  config:
+    url: "${LIVEKIT_URL}"
+    api_key: "${LIVEKIT_API_KEY}"
+    api_secret: "${LIVEKIT_API_SECRET}"
+    agent_name: "${VOICECHECK_AGENT_NAME}"
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+
+persona:
+  name: "Jamie"
+  age: 34
+  personality: "friendly, a bit distracted (calling from a noisy street)"
+  communication_style: "casual, conversational, uses contractions"
+  instructions: >
+    You are booking a birthday dinner for 6 people on Saturday at 7:30pm.
+    You have a nut allergy. You want to ask if they have outdoor seating.
+  model: gpt-4o-mini
+
+flow:
+  - name: "open-and-request"
+    goal: "Open the call warmly and ask to make a reservation for 6 on Saturday night around 7:30pm."
+    expect:
+      - type: rubric_judge
+        min_overall_score: 0.8
+        weighting: weighted
+        dimensions:
+          - conciseness_for_voice
+          - name: warm_open
+            description: "Agent greeted warmly and offered to help."
+            prompt_guidance: "Pass if greeting is under 2 sentences and clearly offers help."
+            min_score: 0.8
+
+  - name: "date-disambiguation"
+    goal: "Ask about Saturday — say 'this Saturday' in a way that could be ambiguous to test whether the agent clarifies which date."
+    expect:
+      - type: rubric_judge
+        min_overall_score: 0.75
+        dimensions:
+          - disambiguation
+          - conciseness_for_voice
+
+  - name: "allergy-capture"
+    goal: "Mention clearly that you have a nut allergy."
+    expect:
+      - type: rubric_judge
+        min_overall_score: 0.9
+        dimensions:
+          - name: allergy_acknowledged
+            description: "Agent acknowledged the nut allergy explicitly."
+            prompt_guidance: "Fail if the agent did not repeat or explicitly confirm 'nut allergy'."
+            min_score: 1.0
+            weight: 2.0
+          - empathy
+
+  - name: "alternative-offer"
+    goal: "The restaurant doesn't have the exact time — accept a nearby time the agent offers."
+    expect:
+      - type: rubric_judge
+        min_overall_score: 0.8
+        dimensions:
+          - task_completion
+          - name: offered_alternative
+            description: "Agent offered an alternative time within 30 minutes."
+            prompt_guidance: "Fail on flat 'we're full' with no alternative."
+            min_score: 0.9
+
+  - name: "confirmation-readback"
+    goal: "Wrap up the call and confirm the booking."
+    expect:
+      - type: rubric_judge
+        min_overall_score: 0.9
+        weighting: min
+        known_facts:
+          - "Restaurant name: Pier 9."
+          - "Hours: Tuesday-Sunday 5pm-10pm, closed Monday."
+          - "Outdoor seating is available on a first-come-first-served basis."
+        false_facts:
+          - "Any specific cancellation policy (none published)."
+          - "Any claim about the menu (not in scope for this agent)."
+        dimensions:
+          - task_completion
+          - closure
+          - {name: factual_accuracy, min_score: 1.0}
+      - type: memory_recall
+        fact: "User has a nut allergy"
+        shared_in_turn: 3
+        min_score: 1.0
+
+per_turn_expect:
+  - type: latency
+    max_first_byte_ms: 4000
+
+conversation_eval:
+  criteria:
+    - "Agent captured every required booking slot (party size, date, time, name, allergy)"
+    - "Agent read the booking back verbatim before ending the call"
+    - "Agent never invented policies (hours, cancellation rules, menu) not given"
+    - "Agent stayed warm and efficient without over-talking"
+  min_score: 0.75
+  model: gpt-4o-mini
+
+settings:
+  turn_timeout: 20.0
+  silence_threshold: 2.0

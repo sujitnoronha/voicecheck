@@ -40,10 +40,38 @@ a:hover { text-decoration: underline; }
 }
 
 .nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
   font-size: 1.15rem;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--text);
   text-decoration: none;
+}
+
+.nav-brand:hover { text-decoration: none; color: var(--text); }
+
+.nav-mark {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+  flex: 0 0 auto;
+}
+
+.nav-word { letter-spacing: -0.01em; }
+
+.nav-tag {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  margin-left: 0.25rem;
 }
 
 .nav-links a {
@@ -72,11 +100,63 @@ a:hover { text-decoration: underline; }
   margin-bottom: 1.5rem;
 }
 
-.page-header h1 { font-size: 1.4rem; }
+.page-header h1 {
+  font-size: 1.6rem;
+  letter-spacing: -0.015em;
+}
 
 .page-subtitle {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.9rem;
+  margin-top: 0.25rem;
+}
+
+.page-actions { display: flex; gap: 0.5rem; }
+
+.section-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.75rem;
+}
+
+/* ── KPI hero row ───────────────────────────────── */
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.kpi {
+  background: linear-gradient(180deg, var(--surface) 0%, rgba(26,29,39,0.6) 100%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+}
+
+.kpi-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.35rem;
+}
+
+.kpi-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
   margin-top: 0.25rem;
 }
 
@@ -92,17 +172,65 @@ a:hover { text-decoration: underline; }
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1.5rem;
-  transition: border-color 0.15s;
+  border-radius: 14px;
+  padding: 1.35rem 1.5rem;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
   cursor: pointer;
 }
 
-.card:hover { border-color: var(--accent); }
+.card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px -12px rgba(99,102,241,0.35);
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
 
 .card h2 {
   font-size: 1.05rem;
-  margin-bottom: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.muted { color: var(--text-muted); }
+.small { font-size: 0.75rem; }
+.unit { font-size: 0.7em; color: var(--text-muted); margin-left: 2px; }
+
+/* ── Percentile mini-row ────────────────────────── */
+
+.percentile-row {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0.25rem;
+}
+
+.pct {
+  flex: 1;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pct-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.pct-val {
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Stats row ──────────────────────────────────── */
@@ -390,6 +518,49 @@ tbody tr:hover { background: var(--surface-hover); }
   background: var(--surface);
   padding: 2px 8px;
   border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.empty-hero {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  max-width: 520px;
+  margin: 2rem auto;
+  padding: 2.5rem 2rem;
+}
+
+.empty-hero .empty-icon {
+  font-size: 2rem;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
+.empty-hero h3 {
+  color: var(--text);
+  font-size: 1.15rem;
+  margin-bottom: 0.35rem;
+  letter-spacing: -0.01em;
+}
+
+.empty-hero p {
+  margin-bottom: 1rem;
+}
+
+.empty-hero pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  text-align: left;
+}
+
+.empty-hero code {
+  background: transparent;
+  padding: 0;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.85rem;
 }
 

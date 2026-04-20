@@ -18,6 +18,19 @@ const VC = {
     return iso.slice(0, 19).replace("T", " ");
   },
 
+  /** Relative time like "2h ago" or "3d ago". Falls back to a short date. */
+  relTime(iso) {
+    if (!iso) return "never";
+    const then = new Date(iso).getTime();
+    if (!Number.isFinite(then)) return "\u2014";
+    const diffSec = (Date.now() - then) / 1000;
+    if (diffSec < 60) return "just now";
+    if (diffSec < 3600) return Math.floor(diffSec / 60) + "m ago";
+    if (diffSec < 86400) return Math.floor(diffSec / 3600) + "h ago";
+    if (diffSec < 604800) return Math.floor(diffSec / 86400) + "d ago";
+    return iso.slice(0, 10);
+  },
+
   /** Format milliseconds with unit. */
   formatMs(ms) {
     if (!ms || ms <= 0) return "\u2014";

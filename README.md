@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests: 268 passing](https://img.shields.io/badge/tests-268%20passing-brightgreen.svg)](tests/)
 
-**Cypress for voice agents.** Write a YAML file. Send real audio. Get real latency numbers.
+**End-to-end testing for voice agents.** Write a YAML scenario. VoiceCheck synthesizes real audio, streams it through a real transport, captures the agent's reply, and grades the conversation — latency, tone, leaks, roleplay consistency, the lot. Runs on your laptop, in CI, or as a pytest test.
 
 ```
   "Hello, how are you?"
@@ -14,19 +14,22 @@
     │  TTS  │───►│ Transport │───►│ Agent │───►│ Evaluate │
     └───────┘    └───────────┘    └───────┘    └──────────┘
                        │                             │
-          LiveKit / Daily / VAPI / Retell      Latency? ✓
-               + custom transports             Keywords? ✓
-                                               Tone? ✓
-                                               LLM Judge? ✓
+       LiveKit · Daily · VAPI · Retell · Echo   Latency ✓
+            + bring-your-own transport          Keywords ✓
+                                                Tone ✓
+                                                LLM Judge ✓
+                                                Rubric (14 presets) ✓
 ```
 
 ### The problem
 
-Most voice agent testing is "call it and vibes-check the response." That works until you ship to production and discover your agent takes 4 seconds to respond, breaks when someone interrupts, or sounds robotic in Spanish.
+Testing a voice agent by calling it and listening is fine — until production. Then you find out first‑byte latency is 4 s on packet loss, the agent admits it's an LLM when pushed, the Spanish voice sounds drunk, and the prompt leaks a tool name on turn six. Text eval frameworks won't catch any of that. Manual calls don't scale. SaaS QA vendors want your call audio on their servers.
 
 ### What VoiceCheck does
 
-Sends real audio through real transports and measures what actually happens. First-byte latency, turn-taking behavior, silence handling, emotional tone, multi-language quality, agent behavior under noise and packet loss. All from a YAML file.
+VoiceCheck drives your agent the way a real user would — through the same transport, with real encoded audio, optional chaos (noise, packet loss, narrowband, G.711), and optional personas (an LLM playing a 7‑year‑old, or an angry refund seeker). Every turn is graded by a pluggable evaluator stack. Results land in a local SQLite store and a dashboard you host yourself.
+
+Think **Playwright for voice agents**: scenarios in git, asserts in YAML, ships in CI, no SaaS in the loop.
 
 ```yaml
 turns:

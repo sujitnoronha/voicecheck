@@ -1,0 +1,39 @@
+# Echo transport — built-in dev transport with zero setup.
+#
+# Run this to verify your voicecheck install works without wiring up
+# a real agent, TTS, or API keys:
+#
+#   voicecheck run examples/echo_smoke.yaml --skip-llm-judge
+#
+# The echo transport returns a canned agent response after a configurable
+# delay. Use it to smoke-test YAML schema, evaluator registration, and
+# scenario runner plumbing before investing in real transport wiring.
+
+name: echo-smoke
+description: Built-in echo transport — zero setup, zero API cost.
+
+transport:
+  type: echo
+  config:
+    response_text: "Hello, I am the echo transport. This is a canned response for smoke testing."
+    first_byte_delay_ms: 500
+
+audio:
+  tts_provider: edge
+  stt_provider: whisper
+  sample_rate: 16000
+  channels: 1
+  stt_kwargs:
+    model_size: base
+
+turns:
+  - user: "Hi, are you working?"
+    expect:
+      - type: latency
+        max_first_byte_ms: 3000
+      - type: turn_count
+        min_words: 5
+
+settings:
+  turn_timeout: 10.0
+  silence_threshold: 1.5
