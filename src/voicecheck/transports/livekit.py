@@ -25,6 +25,7 @@ class LiveKitTransport(Transport):
     """LiveKit transport using the livekit.rtc SDK."""
 
     def __init__(self) -> None:
+        super().__init__()
         self._room: Any = None
         self._audio_source: Any = None
         self._audio_track: Any = None
@@ -257,6 +258,7 @@ class LiveKitTransport(Transport):
         """
         self._metrics = TransportMetrics()
         self._agent_audio_frames = []
+        super().reset_metrics()
 
     def validate_config(self, config: dict) -> list[str]:
         """Validate LiveKit transport config."""

@@ -271,6 +271,12 @@ class VAPITransport(WebSocketTransport):
                 text[:120],
             )
 
+        elif msg_type in ("tool-calls", "function-call"):
+            self._handle_tool_call_event(event)
+
+        elif msg_type in ("tool-call-result", "function-call-result"):
+            self._handle_tool_result_event(event)
+
         elif msg_type == "hang":
             logger.info("VAPI hang-up received (call_id=%s)", self._call_id)
 
@@ -282,6 +288,69 @@ class VAPITransport(WebSocketTransport):
             logger.debug("VAPI event (type=%s): %s", msg_type, message[:200])
 
         return None
+
+    # ── Tool-call parsing ────────────────────────────────────────────
+
+    def _handle_tool_call_event(self, event: dict) -> None:
+        """Surface tool/function calls from a VAPI event.
+
+        VAPI ships two shapes depending on assistant version:
+
+        - Newer (``tool-calls``): ``{"toolCalls": [{"id": "...",
+          "function": {"name": "...", "arguments": "<json string>"}}]}``
+        - Older (``function-call``): ``{"functionCall": {"name": "...",
+          "parameters": {...}}}``
+
+        Both are normalised here so downstream evaluators see a uniform
+        ``ToolCallEvent`` shape regardless of assistant config.
+        """
+        tool_calls = event.get("toolCalls") or event.get("tool_calls")
+        if isinstance(tool_calls, list):
+            for tc in tool_calls:
+                fn = tc.get("function") if isinstance(tc, dict) else None
+                if not isinstance(fn, dict):
+                    continue
+                name = fn.get("name", "")
+                args = _coerce_json_args(fn.get("arguments"))
+                call_id = tc.get("id") or ""
+                if name:
+                    logger.info("VAPI tool call: %s args=%s", name, str(args)[:120])
+                    self.emit_tool_call(name=name, args=args, call_id=call_id)
+            return
+
+        # Older single-function shape
+        fn = event.get("functionCall") or event.get("function_call")
+        if isinstance(fn, dict):
+            name = fn.get("name", "")
+            args = fn.get("parameters") or _coerce_json_args(fn.get("arguments"))
+            if name:
+                logger.info("VAPI function call: %s args=%s", name, str(args)[:120])
+                self.emit_tool_call(name=name, args=args or {})
+
+    def _handle_tool_result_event(self, event: dict) -> None:
+        """Attach the tool result to the most recent matching tool call.
+
+        VAPI sends the result in a separate event with ``toolCallId`` /
+        ``name`` / ``result`` (or ``functionCallResult`` for the older
+        shape). Mutating the buffered ``ToolCallEvent`` in place keeps
+        each call+result pair on a single ``ToolCallEvent`` row, which is
+        what the ``tool_called`` evaluator wants to assert against.
+        """
+        name = event.get("name") or event.get("toolName") or ""
+        call_id = event.get("toolCallId") or event.get("id") or ""
+        result = event.get("result")
+        if result is None:
+            result = event.get("functionCallResult")
+
+        # Find the most recent buffered call that matches name/id and patch in
+        # the result. If none matches, emit a new event so the result is at
+        # least visible in the trace.
+        for tc in reversed(self._tool_calls):
+            if (call_id and tc.call_id == call_id) or (not call_id and tc.name == name):
+                tc.result = result
+                return
+        if name:
+            self.emit_tool_call(name=name, args={}, result=result, call_id=call_id)
 
     async def _on_ws_disconnecting(self, ws: Any, config: dict) -> None:
         """End the VAPI call via the REST API before closing the WebSocket.
@@ -342,6 +411,26 @@ def _nested_get(d: dict, *keys: str) -> Any | None:
         if current is None:
             return None
     return current
+
+
+def _coerce_json_args(raw: Any) -> dict:
+    """Decode tool-call arguments from whatever shape VAPI sent.
+
+    ``arguments`` is sometimes a JSON-encoded string (OpenAI-style
+    tool calls), sometimes a dict (newer assistants), sometimes
+    missing. Always returns a dict so downstream evaluators don't have
+    to defend against three shapes.
+    """
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            decoded = json.loads(raw)
+            if isinstance(decoded, dict):
+                return decoded
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return {}
 
 
 # ── Registration ─────────────────────────────────────────────────────

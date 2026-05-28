@@ -37,6 +37,7 @@ class WebSocketTransport(Transport):
     """
 
     def __init__(self) -> None:
+        super().__init__()
         self._ws: Any = None
         self._metrics = TransportMetrics()
         self._agent_audio_frames: list[AudioFrame] = []
@@ -308,6 +309,7 @@ class WebSocketTransport(Transport):
         """Reset metrics for a new turn."""
         self._metrics = TransportMetrics()
         self._agent_audio_frames = []
+        super().reset_metrics()
         # Drain any leftover audio from previous turn
         while not self._audio_buffer.empty():
             try:

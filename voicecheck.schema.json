@@ -1,0 +1,493 @@
+{
+  "$defs": {
+    "AudioConfig": {
+      "description": "Audio provider configuration.",
+      "properties": {
+        "tts_provider": {
+          "default": "edge",
+          "title": "Tts Provider",
+          "type": "string"
+        },
+        "stt_provider": {
+          "default": "whisper",
+          "title": "Stt Provider",
+          "type": "string"
+        },
+        "sample_rate": {
+          "default": 16000,
+          "title": "Sample Rate",
+          "type": "integer"
+        },
+        "channels": {
+          "default": 1,
+          "title": "Channels",
+          "type": "integer"
+        },
+        "language": {
+          "default": "",
+          "title": "Language",
+          "type": "string"
+        },
+        "degradation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DegradationConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "tts_kwargs": {
+          "additionalProperties": true,
+          "title": "Tts Kwargs",
+          "type": "object"
+        },
+        "stt_kwargs": {
+          "additionalProperties": true,
+          "title": "Stt Kwargs",
+          "type": "object"
+        }
+      },
+      "title": "AudioConfig",
+      "type": "object"
+    },
+    "ConversationEvalConfig": {
+      "description": "Post-conversation evaluation criteria.",
+      "properties": {
+        "criteria": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Criteria",
+          "type": "array"
+        },
+        "min_score": {
+          "default": 0.7,
+          "title": "Min Score",
+          "type": "number"
+        },
+        "model": {
+          "default": "gpt-4o-mini",
+          "title": "Model",
+          "type": "string"
+        }
+      },
+      "title": "ConversationEvalConfig",
+      "type": "object"
+    },
+    "DegradationConfig": {
+      "description": "Audio degradation settings for testing agent robustness.\n\nApplied to user audio after TTS synthesis, before sending to the agent.\nEffects are chained: noise \u2192 bandwidth \u2192 codec \u2192 packet loss.",
+      "properties": {
+        "noise_snr_db": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Noise Snr Db"
+        },
+        "bandwidth": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bandwidth"
+        },
+        "packet_loss_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Packet Loss Pct"
+        },
+        "codec": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Codec"
+        }
+      },
+      "title": "DegradationConfig",
+      "type": "object"
+    },
+    "ExpectConfig": {
+      "additionalProperties": true,
+      "description": "A single evaluation expectation for a turn.",
+      "properties": {
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "ExpectConfig",
+      "type": "object"
+    },
+    "FlowStepConfig": {
+      "description": "A single step in a guided conversation flow.\n\nEach step gives the persona LLM a specific goal to achieve in that turn,\nand defines evaluators to check the agent's response for that step.",
+      "properties": {
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "goal": {
+          "title": "Goal",
+          "type": "string"
+        },
+        "expect": {
+          "items": {
+            "$ref": "#/$defs/ExpectConfig"
+          },
+          "title": "Expect",
+          "type": "array"
+        }
+      },
+      "required": [
+        "goal"
+      ],
+      "title": "FlowStepConfig",
+      "type": "object"
+    },
+    "InterruptConfig": {
+      "description": "Mid-response interruption configuration.\n\nSend additional audio to the agent while it is responding,\nsimulating a user barge-in.",
+      "properties": {
+        "after_ms": {
+          "title": "After Ms",
+          "type": "integer"
+        },
+        "with": {
+          "title": "With",
+          "type": "string"
+        }
+      },
+      "required": [
+        "after_ms",
+        "with"
+      ],
+      "title": "InterruptConfig",
+      "type": "object"
+    },
+    "ObservabilityYamlConfig": {
+      "description": "OpenTelemetry tracing config (optional).\n\nWhen enabled, voicecheck emits OTel spans for every scenario, turn,\naudio phase, evaluator, and tool call. CLI flags\n(``--otel-endpoint``, ``--otel-console``, ``--otel-service``) take\nprecedence over these YAML values.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "service_name": {
+          "default": "voicecheck",
+          "title": "Service Name",
+          "type": "string"
+        },
+        "endpoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endpoint"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Headers",
+          "type": "object"
+        },
+        "console": {
+          "default": false,
+          "title": "Console",
+          "type": "boolean"
+        },
+        "resource_attrs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Resource Attrs",
+          "type": "object"
+        }
+      },
+      "title": "ObservabilityYamlConfig",
+      "type": "object"
+    },
+    "PersonaConfig": {
+      "description": "Persona for free-flowing conversations (alternative to scripted turns).",
+      "properties": {
+        "name": {
+          "default": "Test User",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "age": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Age"
+        },
+        "personality": {
+          "default": "friendly and curious",
+          "title": "Personality",
+          "type": "string"
+        },
+        "communication_style": {
+          "default": "casual, short sentences",
+          "title": "Communication Style",
+          "type": "string"
+        },
+        "goals": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Goals",
+          "type": "array"
+        },
+        "topics": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Topics",
+          "type": "array"
+        },
+        "instructions": {
+          "default": "",
+          "title": "Instructions",
+          "type": "string"
+        },
+        "model": {
+          "default": "gpt-4o-mini",
+          "title": "Model",
+          "type": "string"
+        },
+        "max_turns": {
+          "default": 5,
+          "title": "Max Turns",
+          "type": "integer"
+        },
+        "opening": {
+          "default": "",
+          "title": "Opening",
+          "type": "string"
+        }
+      },
+      "title": "PersonaConfig",
+      "type": "object"
+    },
+    "SettingsConfig": {
+      "description": "Scenario-level settings.",
+      "properties": {
+        "turn_timeout": {
+          "default": 15.0,
+          "title": "Turn Timeout",
+          "type": "number"
+        },
+        "silence_threshold": {
+          "default": 1.5,
+          "title": "Silence Threshold",
+          "type": "number"
+        }
+      },
+      "title": "SettingsConfig",
+      "type": "object"
+    },
+    "SilenceConfig": {
+      "description": "Send silence instead of speech for a turn.",
+      "properties": {
+        "duration_s": {
+          "title": "Duration S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "duration_s"
+      ],
+      "title": "SilenceConfig",
+      "type": "object"
+    },
+    "TransportConfig": {
+      "description": "Transport configuration.",
+      "properties": {
+        "type": {
+          "default": "livekit",
+          "title": "Type",
+          "type": "string"
+        },
+        "mode": {
+          "default": "direct",
+          "title": "Mode",
+          "type": "string"
+        },
+        "config": {
+          "additionalProperties": true,
+          "title": "Config",
+          "type": "object"
+        }
+      },
+      "title": "TransportConfig",
+      "type": "object"
+    },
+    "TurnConfig": {
+      "description": "A single conversation turn in a scenario.\n\nSpecify either ``user`` text (synthesized via TTS) or ``silence``\n(sends silent frames). Use ``interrupt`` to barge in mid-response.",
+      "properties": {
+        "user": {
+          "default": "",
+          "title": "User",
+          "type": "string"
+        },
+        "expect": {
+          "items": {
+            "$ref": "#/$defs/ExpectConfig"
+          },
+          "title": "Expect",
+          "type": "array"
+        },
+        "interrupt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InterruptConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "silence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SilenceConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "pause_before_ms": {
+          "default": 0,
+          "title": "Pause Before Ms",
+          "type": "integer"
+        }
+      },
+      "title": "TurnConfig",
+      "type": "object"
+    }
+  },
+  "description": "A complete test scenario loaded from YAML.\n\nSupports four modes:\n- Scripted: Define explicit `turns` with user text and per-turn evaluators\n- Questions: Define `questions` \u2014 fixed user messages with shared per_turn_expect\n- Persona: Define a `persona` for free-flowing conversation\n- Guided: Define a `persona` + `flow` for goal-driven structured conversation",
+  "properties": {
+    "name": {
+      "default": "unnamed",
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "transport": {
+      "$ref": "#/$defs/TransportConfig"
+    },
+    "audio": {
+      "$ref": "#/$defs/AudioConfig"
+    },
+    "turns": {
+      "items": {
+        "$ref": "#/$defs/TurnConfig"
+      },
+      "title": "Turns",
+      "type": "array"
+    },
+    "questions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Questions",
+      "type": "array"
+    },
+    "persona": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PersonaConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "conversation_eval": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ConversationEvalConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "per_turn_expect": {
+      "items": {
+        "$ref": "#/$defs/ExpectConfig"
+      },
+      "title": "Per Turn Expect",
+      "type": "array"
+    },
+    "flow": {
+      "items": {
+        "$ref": "#/$defs/FlowStepConfig"
+      },
+      "title": "Flow",
+      "type": "array"
+    },
+    "settings": {
+      "$ref": "#/$defs/SettingsConfig"
+    },
+    "observability": {
+      "$ref": "#/$defs/ObservabilityYamlConfig"
+    }
+  },
+  "title": "Scenario",
+  "type": "object"
+}

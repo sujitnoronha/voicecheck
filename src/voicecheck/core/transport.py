@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
-from voicecheck.core.types import AudioFrame, TransportMetrics
+from voicecheck.core.types import AudioFrame, ToolCallEvent, TransportMetrics
 
 
 class Transport(ABC):
@@ -12,7 +13,16 @@ class Transport(ABC):
 
     Implementations handle the specifics of each platform (LiveKit, Pipecat, VAPI)
     while exposing a uniform interface for sending/receiving audio.
+
+    Subclasses that observe tool/function-call events on their control
+    channel should call :meth:`emit_tool_call` so the runner can attach
+    them to the current turn (and the OTel span tree).
     """
+
+    def __init__(self) -> None:
+        # Tool calls observed since the last reset_metrics() call. The
+        # runner reads + clears this each turn.
+        self._tool_calls: list[ToolCallEvent] = []
 
     @abstractmethod
     async def connect(self, config: dict) -> None:
@@ -57,7 +67,58 @@ class Transport(ABC):
         """Timing metrics from the current/last turn."""
 
     def reset_metrics(self) -> None:
-        """Reset metrics for a new turn. Override if needed."""
+        """Reset metrics for a new turn. Override if needed.
+
+        Subclasses overriding this method should ``super().reset_metrics()``
+        (or clear ``self._tool_calls``) to keep tool-call buffering correct.
+        """
+        self._tool_calls = []
+
+    def emit_tool_call(
+        self,
+        name: str,
+        args: dict[str, Any] | None = None,
+        result: Any = None,
+        error: str = "",
+        call_id: str = "",
+    ) -> None:
+        """Record a tool/function call observed on the control channel.
+
+        Buffers the event for inclusion on the current TurnResult and
+        emits it as a span event under the active OTel span. Safe to
+        call whether or not observability is configured.
+
+        ``call_id`` is the provider's invocation id (e.g. VAPI's
+        ``toolCalls[].id`` or Retell's ``tool_call_id``). Pass it when
+        you need a later result event to find this row.
+        """
+        event = ToolCallEvent(
+            name=name,
+            args=args or {},
+            result=result,
+            error=error,
+            call_id=call_id,
+        )
+        self._tool_calls.append(event)
+        try:
+            from voicecheck.observability import record_tool_call_event
+
+            record_tool_call_event(
+                name=name,
+                args=event.args,
+                result=result,
+                error=error or None,
+            )
+        except Exception:
+            # Observability is best-effort. A telemetry failure must
+            # never break a transport.
+            pass
+
+    def take_tool_calls(self) -> list[ToolCallEvent]:
+        """Drain and return tool calls observed since the last drain."""
+        events = self._tool_calls
+        self._tool_calls = []
+        return events
 
     def validate_config(self, config: dict) -> list[str]:
         """Validate transport-specific config before running.

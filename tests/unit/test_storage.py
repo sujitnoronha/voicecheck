@@ -117,6 +117,36 @@ class TestResultStore:
         assert self.store.get_scenarios() == []
         assert self.store.get_run("nonexistent") is None
 
+    def test_artifacts_dir_roundtrip(self, tmp_path):
+        artifacts = tmp_path / "run-artifacts"
+        artifacts.mkdir()
+        (artifacts / "turn_1_user.wav").write_bytes(b"RIFF....WAVE")
+        (artifacts / "turn_1_agent.wav").write_bytes(b"RIFF....WAVE")
+        (artifacts / "full_conversation.wav").write_bytes(b"RIFF....WAVE")
+
+        run_id = self.store.save_report(_make_report(), artifacts_dir=artifacts)
+        run = self.store.get_run(run_id)
+        assert run["artifacts_dir"] == str(artifacts.resolve())
+
+        found = self.store.get_run_artifacts(run_id)
+        assert found["full_conversation"] == "full_conversation.wav"
+        assert found["turns"][0]["user"] == "turn_1_user.wav"
+        assert found["turns"][0]["agent"] == "turn_1_agent.wav"
+
+    def test_get_run_artifacts_none_when_no_dir(self):
+        run_id = self.store.save_report(_make_report())
+        assert self.store.get_run_artifacts(run_id) is None
+
+    def test_get_run_artifacts_missing_files_returned_as_none(self, tmp_path):
+        artifacts = tmp_path / "partial"
+        artifacts.mkdir()
+        (artifacts / "turn_1_agent.wav").write_bytes(b"RIFF")
+        run_id = self.store.save_report(_make_report(), artifacts_dir=artifacts)
+        found = self.store.get_run_artifacts(run_id)
+        assert found["full_conversation"] is None
+        assert found["turns"][0]["user"] is None
+        assert found["turns"][0]["agent"] == "turn_1_agent.wav"
+
 
 class TestDashboard:
     def test_generate_empty(self):
