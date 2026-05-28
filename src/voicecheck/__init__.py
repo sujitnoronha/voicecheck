@@ -12,7 +12,7 @@ Quick start::
     assert report.passed
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # Public API
 from voicecheck.core.evaluator import Evaluator, get_evaluator, register_evaluator
