@@ -14,11 +14,17 @@
   const container = document.getElementById('run-content');
 
   try {
-    const run = await VC.fetchAPI('/api/runs/' + runId);
+    const [run, artifacts, callLogResp] = await Promise.all([
+      VC.fetchAPI('/api/runs/' + runId),
+      VC.fetchAPI('/api/runs/' + runId + '/artifacts').catch(() => ({ available: false, turns: [] })),
+      VC.fetchAPI('/api/runs/' + runId + '/calllog').catch(() => ({ available: false, events: [] })),
+    ]);
+
+    const turnArtifacts = {};
+    for (const t of (artifacts.turns || [])) turnArtifacts[t.index] = t;
     const tags = run.tags || [];
     const tagsHtml = tags.map(t => `<span class="tag">${VC.esc(t)}</span>`).join(' ');
 
-    // Compute averages from turns
     const fbs = run.turns.filter(t => t.first_byte_ms > 0).map(t => t.first_byte_ms);
     const tots = run.turns.filter(t => t.total_ms > 0).map(t => t.total_ms);
     const avgFb = fbs.length ? fbs.reduce((a, b) => a + b, 0) / fbs.length : 0;
@@ -30,8 +36,9 @@
           <h1>${VC.esc(run.scenario_name)}</h1>
           <p class="page-subtitle">Run ${run.id.slice(0, 8)} &middot; ${VC.formatDate(run.created_at)}</p>
         </div>
-        <div>
-          <a href="/scenario/${encodeURIComponent(run.scenario_name)}" class="btn btn-ghost" style="margin-right:0.5rem;">All Runs</a>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <a href="/scenario/${encodeURIComponent(run.scenario_name)}" class="btn btn-ghost">All Runs</a>
+          <button class="btn btn-secondary" id="btn-save-baseline">Save as Baseline</button>
           <button class="btn btn-danger" id="btn-delete">Delete</button>
         </div>
       </div>
@@ -61,10 +68,29 @@
         </div>
       </div>
 
-      <h2 style="margin:1.5rem 0 1rem;">Conversation</h2>
+      <!-- Tab bar -->
+      <div class="tab-bar" style="display:flex;gap:0;border-bottom:2px solid var(--border);margin:1.5rem 0 0;">
+        <button class="tab-btn active" data-tab="conversation">Conversation</button>
+        <button class="tab-btn" data-tab="trace">Trace</button>
+        <button class="tab-btn" data-tab="calllog">Call Log</button>
+        <button class="tab-btn" data-tab="compare">Compare to Baseline</button>
+      </div>
+
+      <!-- Conversation tab -->
+      <div class="tab-pane" id="tab-conversation" style="padding-top:1rem;">
     `;
 
-    // Render each turn
+    // Full conversation audio
+    if (artifacts.available && artifacts.full_conversation) {
+      html += `
+        <div class="turn-card" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+          <strong style="font-size:0.85rem;color:var(--text-muted);">Full conversation</strong>
+          <audio controls preload="none" style="flex:1;min-width:260px;"
+                 src="/audio/${encodeURIComponent(runId)}/${encodeURIComponent(artifacts.full_conversation)}"></audio>
+        </div>
+      `;
+    }
+
     for (const turn of run.turns) {
       const evals = turn.evaluations || [];
       let evalsHtml = '';
@@ -76,6 +102,19 @@
             <span style="font-size:0.8rem;color:var(--text-muted);">${VC.esc(ev.reason)}</span>
           </div>`;
       }
+
+      const ta = turnArtifacts[turn.turn_index] || {};
+      const mkPlayer = (filename, label, colorVar) => filename ? `
+        <div style="display:flex;align-items:center;gap:0.5rem;margin:0.35rem 0;">
+          <span style="font-size:0.75rem;font-weight:600;color:${colorVar};min-width:48px;">${label}</span>
+          <audio controls preload="none" style="flex:1;height:32px;"
+                 src="/audio/${encodeURIComponent(runId)}/${encodeURIComponent(filename)}"></audio>
+        </div>` : '';
+      const audioHtml = (ta.user || ta.agent) ? `
+        <div style="padding-top:0.5rem;border-top:1px solid var(--border);margin-top:0.5rem;">
+          ${mkPlayer(ta.user, 'User', 'var(--accent)')}
+          ${mkPlayer(ta.agent, 'Agent', 'var(--green)')}
+        </div>` : '';
 
       html += `
         <div class="turn-card">
@@ -89,6 +128,7 @@
           <div class="turn-text">
             <span class="speaker speaker-agent">Agent:</span>${VC.esc(turn.agent_text || '(no response)')}
           </div>
+          ${audioHtml}
           <div class="turn-metrics">
             <span>First byte: <strong class="${VC.latencyClass(turn.first_byte_ms)}">${VC.formatMs(turn.first_byte_ms)}</strong></span>
             <span>Total: <strong class="${VC.latencyClass(turn.total_ms)}">${VC.formatMs(turn.total_ms)}</strong></span>
@@ -98,7 +138,6 @@
       `;
     }
 
-    // Conversation evaluation (persona mode)
     if (run.conversation_eval) {
       const ce = run.conversation_eval;
       html += `
@@ -111,25 +150,335 @@
             </strong>
           </div>
       `;
-
       if (ce.criteria_results) {
         for (const cr of ce.criteria_results) {
-          const cls = cr.score >= 0.7 ? 'pass' : 'fail';
           html += `
             <div class="conv-eval-item">
-              <span class="${cls}" style="font-weight:600;">${(cr.score || 0).toFixed(2)}</span>
+              <span class="${cr.score >= 0.7 ? 'pass' : 'fail'}" style="font-weight:600;">${(cr.score || 0).toFixed(2)}</span>
               <span style="margin-left:0.75rem;">${VC.esc(cr.criteria)}</span>
               ${cr.reason ? `<div style="color:var(--text-muted);font-size:0.8rem;margin-top:0.25rem;">${VC.esc(cr.reason)}</div>` : ''}
             </div>`;
         }
       }
-
       html += '</div>';
     }
 
+    html += `</div><!-- /tab-conversation -->`;
+
+    // Call Log tab
+    html += `<div class="tab-pane" id="tab-calllog" style="display:none;padding-top:1rem;">`;
+    if (callLogResp.available && callLogResp.events.length) {
+      html += `<div class="call-log">`;
+      const iconFor = e => ({
+        run_started:'▶', run_completed:'✓', run_failed:'✗',
+        turn_started:'↩', turn_completed:'↩',
+        user_text:'👤', agent_text:'🤖',
+        tool_call:'⚙', eval_result:'🔍',
+        conversation_eval:'📊', turn_error:'⚠',
+      }[e] || '·');
+      for (const ev of callLogResp.events) {
+        const icon = iconFor(ev.event);
+        let detail = '';
+        if (ev.event === 'user_text') detail = VC.esc(ev.text || '');
+        else if (ev.event === 'agent_text') detail = `${VC.esc((ev.text || '').slice(0, 120))} <span style="color:var(--text-muted);font-size:0.78rem;">first_byte=${ev.first_byte_ms?.toFixed(0)}ms total=${ev.total_ms?.toFixed(0)}ms</span>`;
+        else if (ev.event === 'tool_call') detail = `<strong>${VC.esc(ev.name)}</strong> <code style="font-size:0.78rem;">${VC.esc(JSON.stringify(ev.args || {}))}</code>${ev.result != null ? ` → <code style="font-size:0.78rem;">${VC.esc(JSON.stringify(ev.result)).slice(0,80)}</code>` : ''}`;
+        else if (ev.event === 'eval_result') {
+          const cls = ev.passed ? 'eval-pass' : 'eval-fail';
+          detail = `<span class="eval-badge ${cls}">${VC.esc(ev.type)}</span> <span style="font-size:0.8rem;color:var(--text-muted);">${VC.esc(ev.reason || '')}</span>`;
+        }
+        else if (ev.event === 'run_completed') detail = `passed=${ev.passed} turns=${ev.passed_turns}/${ev.total_turns}`;
+        else if (ev.event === 'turn_started' || ev.event === 'turn_completed') detail = `turn ${(ev.turn ?? 0) + 1}`;
+        const ts = ev.ts ? new Date(ev.ts * 1000).toISOString().slice(11,23) : '';
+        html += `<div class="log-entry log-${ev.event.replace('_','-')}">
+          <span class="log-icon">${icon}</span>
+          <span class="log-event">${VC.esc(ev.event)}</span>
+          <span class="log-detail">${detail}</span>
+          <span class="log-ts">${ts}</span>
+        </div>`;
+      }
+      html += `</div>`;
+    } else {
+      html += `<div class="empty">No call log available for this run.<br>
+        Call logs are written automatically for runs executed with <strong>voicecheck v0.2+</strong>.</div>`;
+    }
+    html += `</div><!-- /tab-calllog -->`;
+
+    // Trace tab — per-turn Gantt timeline built from the call log
+    html += `
+      <div class="tab-pane" id="tab-trace" style="display:none;padding-top:1rem;">
+        <div id="trace-content"></div>
+      </div>`;
+
+    // Compare to Baseline tab
+    html += `
+      <div class="tab-pane" id="tab-compare" style="display:none;padding-top:1rem;">
+        <div id="compare-content">
+          <div style="margin-bottom:1rem;">
+            <label style="font-weight:600;margin-right:0.5rem;">Baseline:</label>
+            <select id="baseline-select" style="min-width:200px;">
+              <option value="">Loading baselines…</option>
+            </select>
+            <button class="btn btn-secondary" id="btn-compare" style="margin-left:0.5rem;" disabled>Compare</button>
+          </div>
+          <div id="compare-result"></div>
+        </div>
+      </div>`;
+
     container.innerHTML = html;
 
-    // Delete handler
+    // --- Tab switching ---
+    container.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.onclick = () => {
+        container.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        container.querySelectorAll('.tab-pane').forEach(p => p.style.display = 'none');
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).style.display = '';
+        if (btn.dataset.tab === 'trace') renderTrace();
+      };
+    });
+
+    // --- Trace tab renderer ---
+    let _traceRendered = false;
+    function renderTrace() {
+      if (_traceRendered) return;
+      _traceRendered = true;
+      const target = document.getElementById('trace-content');
+      const events = (callLogResp && callLogResp.available) ? callLogResp.events : [];
+      if (!events.length) {
+        target.innerHTML = `<div class="empty">No call log available for this run.<br>
+          The trace view is built from <code>call_log.jsonl</code>; runs from <strong>voicecheck v0.2+</strong> emit it automatically.</div>`;
+        return;
+      }
+      // Group events by turn
+      const byTurn = new Map();
+      let runStart = null;
+      let runEnd = null;
+      for (const ev of events) {
+        if (ev.ts != null) {
+          if (runStart == null || ev.ts < runStart) runStart = ev.ts;
+          if (runEnd == null || ev.ts > runEnd) runEnd = ev.ts;
+        }
+        const t = ev.turn;
+        if (t == null) continue;
+        if (!byTurn.has(t)) byTurn.set(t, []);
+        byTurn.get(t).push(ev);
+      }
+      if (!byTurn.size) {
+        target.innerHTML = `<div class="empty">Call log has no per-turn events.</div>`;
+        return;
+      }
+
+      const totalDur = Math.max((runEnd || 0) - (runStart || 0), 0.001);
+      const turnIndexes = [...byTurn.keys()].sort((a, b) => a - b);
+
+      let html = `
+        <div style="margin-bottom:0.75rem;display:flex;gap:1rem;flex-wrap:wrap;font-size:0.78rem;color:var(--text-muted);align-items:center;">
+          <span><span class="trace-legend-swatch" style="background:#6366f1"></span> user turn</span>
+          <span><span class="trace-legend-swatch" style="background:#22c55e"></span> agent first byte → end</span>
+          <span><span class="trace-legend-swatch" style="background:#eab308"></span> tool_call</span>
+          <span><span class="trace-legend-swatch" style="background:rgba(255,255,255,0.25)"></span> evaluator</span>
+          <span style="margin-left:auto;">total: <strong>${(totalDur).toFixed(2)}s</strong></span>
+        </div>
+        <div class="trace">`;
+
+      for (const ti of turnIndexes) {
+        const turnEvents = byTurn.get(ti);
+        const tStart = turnEvents.find(e => e.event === 'turn_started');
+        const tUser = turnEvents.find(e => e.event === 'user_text');
+        const tAgent = turnEvents.find(e => e.event === 'agent_text');
+        const tEnd = turnEvents.find(e => e.event === 'turn_completed');
+        const tools = turnEvents.filter(e => e.event === 'tool_call');
+        const evals = turnEvents.filter(e => e.event === 'eval_result');
+
+        const startTs = (tStart || tUser || turnEvents[0]).ts;
+        const endTs = (tEnd || tAgent || turnEvents[turnEvents.length - 1]).ts;
+        const turnDur = Math.max(endTs - startTs, 0.001);
+        const pct = (ts) => ((ts - startTs) / turnDur) * 100;
+
+        // Agent timing: first_byte_ms relative to send_end; we approximate that the
+        // agent block starts at first_byte_ts ≈ agent_text.ts (the event fires when
+        // the agent turn completes) - total_ms + first_byte_ms. The agent block ends
+        // at agent_text.ts. If we don't have agent timing, skip.
+        let agentStart = null;
+        let agentFirstByte = null;
+        let agentEnd = null;
+        if (tAgent && tAgent.total_ms != null && tAgent.first_byte_ms != null) {
+          agentEnd = tAgent.ts;
+          agentStart = tAgent.ts - (tAgent.total_ms / 1000);
+          agentFirstByte = agentStart + (tAgent.first_byte_ms / 1000);
+        }
+
+        // User segment: from turn_started → user_text (or to agent_start if known)
+        let userStart = startTs;
+        let userEnd = tUser ? tUser.ts : (agentStart || endTs);
+
+        const userPctL = pct(userStart);
+        const userPctW = Math.max(pct(userEnd) - pct(userStart), 0.5);
+
+        let agentBlock = '';
+        if (agentStart != null) {
+          const aL = pct(agentStart);
+          const aW = Math.max(pct(agentEnd) - aL, 0.5);
+          const fbPct = agentFirstByte != null ? pct(agentFirstByte) : null;
+          agentBlock = `
+            <div class="trace-bar trace-bar-agent" style="left:${aL}%;width:${aW}%;"
+                 title="agent: ${tAgent.total_ms?.toFixed(0)}ms total · ${tAgent.first_byte_ms?.toFixed(0)}ms first byte">
+              <span class="trace-bar-label">agent</span>
+            </div>
+            ${fbPct != null ? `<div class="trace-marker trace-marker-fb" style="left:${fbPct}%;"
+                title="first byte @ ${tAgent.first_byte_ms?.toFixed(0)}ms"></div>` : ''}`;
+        }
+
+        const toolMarkers = tools.map(tc => {
+          const p = pct(tc.ts);
+          const args = JSON.stringify(tc.args || {}).slice(0, 80);
+          return `<div class="trace-marker trace-marker-tool" style="left:${p}%;"
+                       title="${VC.esc(tc.name)}(${VC.esc(args)})"></div>`;
+        }).join('');
+
+        const evalMarkers = evals.map(ev => {
+          const p = pct(ev.ts);
+          const cls = ev.passed ? 'trace-marker-eval-pass' : 'trace-marker-eval-fail';
+          return `<div class="trace-marker ${cls}" style="left:${p}%;"
+                       title="${VC.esc(ev.type)} ${ev.passed ? 'pass' : 'fail'} — ${VC.esc(ev.reason || '')}"></div>`;
+        }).join('');
+
+        const fbBadge = tAgent && tAgent.first_byte_ms != null
+          ? `<span class="${VC.latencyClass(tAgent.first_byte_ms)}" style="font-weight:600;">${tAgent.first_byte_ms.toFixed(0)}ms FB</span>`
+          : '<span class="muted">—</span>';
+        const totalBadge = tAgent && tAgent.total_ms != null
+          ? `<span class="${VC.latencyClass(tAgent.total_ms)}" style="font-weight:600;">${tAgent.total_ms.toFixed(0)}ms total</span>`
+          : '<span class="muted">—</span>';
+
+        html += `
+          <div class="trace-row">
+            <div class="trace-row-label">
+              <strong>Turn ${ti + 1}</strong>
+              <div style="font-size:0.72rem;color:var(--text-muted);">${turnDur.toFixed(2)}s</div>
+              <div style="font-size:0.72rem;margin-top:0.2rem;">${fbBadge} · ${totalBadge}</div>
+            </div>
+            <div class="trace-row-track">
+              <div class="trace-bar trace-bar-user" style="left:${userPctL}%;width:${userPctW}%;"
+                   title="user turn">
+                <span class="trace-bar-label">user</span>
+              </div>
+              ${agentBlock}
+              ${toolMarkers}
+              ${evalMarkers}
+            </div>
+          </div>`;
+      }
+      html += `</div>`;
+
+      // Aggregate latency phase summary (first byte vs. tail)
+      const fbs = [], tails = [];
+      for (const ti of turnIndexes) {
+        const a = byTurn.get(ti).find(e => e.event === 'agent_text');
+        if (a && a.first_byte_ms != null) fbs.push(a.first_byte_ms);
+        if (a && a.total_ms != null && a.first_byte_ms != null) tails.push(a.total_ms - a.first_byte_ms);
+      }
+      if (fbs.length) {
+        const sum = arr => arr.reduce((a, b) => a + b, 0);
+        const avg = arr => arr.length ? sum(arr) / arr.length : 0;
+        const max = arr => arr.length ? Math.max(...arr) : 0;
+        html += `
+          <div style="margin-top:1.5rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0.75rem;">
+            <div class="kpi"><div class="kpi-label">Avg first byte</div>
+              <div class="kpi-value ${VC.latencyClass(avg(fbs))}">${VC.formatMs(avg(fbs))}</div></div>
+            <div class="kpi"><div class="kpi-label">Max first byte</div>
+              <div class="kpi-value ${VC.latencyClass(max(fbs))}">${VC.formatMs(max(fbs))}</div></div>
+            <div class="kpi"><div class="kpi-label">Avg tail (FB → end)</div>
+              <div class="kpi-value">${VC.formatMs(avg(tails))}</div></div>
+            <div class="kpi"><div class="kpi-label">Turns analyzed</div>
+              <div class="kpi-value">${fbs.length}</div></div>
+          </div>`;
+      }
+
+      target.innerHTML = html;
+    }
+
+    // --- Baseline dropdown ---
+    try {
+      const baselines = await VC.fetchAPI('/api/baselines?scenario=' + encodeURIComponent(run.scenario_name));
+      const sel = document.getElementById('baseline-select');
+      if (baselines.length) {
+        sel.innerHTML = baselines.map(b =>
+          `<option value="${VC.esc(b.id)}">${VC.esc(b.name)} (${b.created_at?.slice(0,10)})</option>`
+        ).join('');
+        document.getElementById('btn-compare').disabled = false;
+      } else {
+        sel.innerHTML = '<option value="">No baselines for this scenario</option>';
+      }
+    } catch (e) { /* ignore */ }
+
+    // --- Compare button ---
+    document.getElementById('btn-compare').onclick = async () => {
+      const baselineId = document.getElementById('baseline-select').value;
+      if (!baselineId) return;
+      const resultDiv = document.getElementById('compare-result');
+      resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div> Comparing…</div>';
+      try {
+        const cmp = await VC.fetchJSON('/api/baselines/' + baselineId + '/compare', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ run_id: runId }),
+        });
+        let h = '';
+        if (!cmp.regressions.length) {
+          h = `<div class="alert alert-success">✓ No regressions detected vs this baseline.</div>`;
+        } else {
+          const ciFailures = cmp.regressions.filter(r => r.is_ci_failure);
+          const warns = cmp.regressions.filter(r => !r.is_ci_failure);
+          if (ciFailures.length) {
+            h += `<div class="alert alert-danger"><strong>CI failures (${ciFailures.length})</strong><ul style="margin:0.5rem 0 0 1rem;">`;
+            for (const r of ciFailures) h += `<li>${VC.esc(r.description)}</li>`;
+            h += `</ul></div>`;
+          }
+          if (warns.length) {
+            h += `<div class="alert alert-warn"><strong>Warnings (${warns.length})</strong><ul style="margin:0.5rem 0 0 1rem;">`;
+            for (const r of warns) h += `<li>${VC.esc(r.description)}</li>`;
+            h += `</ul></div>`;
+          }
+        }
+        // Metrics table
+        const b = cmp.baseline, cur = cmp.current;
+        h += `<div class="table-wrap" style="margin-top:1rem;"><table>
+          <thead><tr><th>Metric</th><th>Baseline</th><th>Current</th><th>Delta</th></tr></thead><tbody>`;
+        const rows = [
+          ['pass_rate', (b.pass_rate*100).toFixed(1)+'%', (cur.pass_rate*100).toFixed(1)+'%', ((cur.pass_rate-b.pass_rate)*100).toFixed(1)+'%'],
+          ['avg_first_byte_ms', b.avg_first_byte_ms?.toFixed(0)+'ms', cur.avg_first_byte_ms?.toFixed(0)+'ms', (cur.avg_first_byte_ms-b.avg_first_byte_ms).toFixed(0)+'ms'],
+          ['p95_first_byte_ms', b.p95_first_byte_ms?.toFixed(0)+'ms', cur.p95_first_byte_ms?.toFixed(0)+'ms', (cur.p95_first_byte_ms-b.p95_first_byte_ms).toFixed(0)+'ms'],
+          ['avg_total_ms', b.avg_total_ms?.toFixed(0)+'ms', cur.avg_total_ms?.toFixed(0)+'ms', (cur.avg_total_ms-b.avg_total_ms).toFixed(0)+'ms'],
+          ['p95_total_ms', b.p95_total_ms?.toFixed(0)+'ms', cur.p95_total_ms?.toFixed(0)+'ms', (cur.p95_total_ms-b.p95_total_ms).toFixed(0)+'ms'],
+        ];
+        for (const [m, bv, cv, d] of rows) {
+          const reg = cmp.regressions.find(r => r.metric === m);
+          const cls = reg ? (reg.is_ci_failure ? 'fail' : 'warn') : '';
+          h += `<tr class="${cls}"><td>${m}</td><td>${bv}</td><td>${cv}</td><td>${d}</td></tr>`;
+        }
+        h += `</tbody></table></div>`;
+        resultDiv.innerHTML = h;
+      } catch (err) {
+        resultDiv.innerHTML = `<div class="empty">Error: ${VC.esc(err.message)}</div>`;
+      }
+    };
+
+    // --- Save as Baseline ---
+    document.getElementById('btn-save-baseline').onclick = async () => {
+      const name = prompt('Baseline name (e.g. "prod-v1", "pre-refactor"):');
+      if (!name) return;
+      const notes = prompt('Optional notes (leave blank to skip):') || '';
+      try {
+        await VC.fetchJSON('/api/baselines', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ run_id: runId, name, notes }),
+        });
+        alert(`Baseline "${name}" saved.`);
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    };
+
+    // --- Delete ---
     document.getElementById('btn-delete').onclick = async () => {
       if (!confirm('Delete this run? This cannot be undone.')) return;
       try {

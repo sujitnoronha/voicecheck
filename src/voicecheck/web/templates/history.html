@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}VoiceCheck — History{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Run History</h1>
+    <p class="page-subtitle" id="page-subtitle">Loading...</p>
+  </div>
+</div>
+
+<div class="filter-bar" id="filter-bar" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
+  <select id="scenario-filter" style="min-width:180px;">
+    <option value="">All Scenarios</option>
+  </select>
+  <select id="status-filter">
+    <option value="">All Statuses</option>
+    <option value="passed">Passed</option>
+    <option value="failed">Failed</option>
+  </select>
+  <input id="tag-filter" type="text" placeholder="Filter by tag…" style="min-width:140px;">
+  <select id="sort-by">
+    <option value="date">Sort: Date</option>
+    <option value="pass_rate">Sort: Pass Rate</option>
+    <option value="latency">Sort: Latency</option>
+  </select>
+  <button class="btn btn-ghost" id="btn-reset">Reset</button>
+</div>
+
+<div id="runs-content">
+  <div class="loading"><div class="spinner"></div><br>Loading history...</div>
+</div>
+
+<div class="pagination" id="pagination" style="display:none;">
+  <button class="btn btn-ghost" id="btn-prev" disabled>Previous</button>
+  <span class="pagination-info" id="pagination-info"></span>
+  <button class="btn btn-ghost" id="btn-next">Next</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function() {
+  const PAGE_SIZE = 50;
+  let offset = 0;
+  let allRuns = [];
+
+  const content = document.getElementById('runs-content');
+  const pagination = document.getElementById('pagination');
+  const btnPrev = document.getElementById('btn-prev');
+  const btnNext = document.getElementById('btn-next');
+  const pageInfo = document.getElementById('pagination-info');
+  const subtitle = document.getElementById('page-subtitle');
+  const scenarioSel = document.getElementById('scenario-filter');
+  const statusSel = document.getElementById('status-filter');
+  const tagInput = document.getElementById('tag-filter');
+  const sortSel = document.getElementById('sort-by');
+
+  // Populate scenario dropdown
+  try {
+    const scenarios = await VC.fetchAPI('/api/scenarios');
+    for (const s of scenarios) {
+      const opt = document.createElement('option');
+      opt.value = s.scenario_name;
+      opt.textContent = s.scenario_name;
+      scenarioSel.appendChild(opt);
+    }
+  } catch (e) { /* ignore */ }
+
+  function getFilters() {
+    return {
+      scenario: scenarioSel.value,
+      status: statusSel.value,
+      tag: tagInput.value.trim(),
+      sort: sortSel.value,
+    };
+  }
+
+  function applyClientFilters(runs) {
+    const { status, tag, sort } = getFilters();
+    let out = runs.slice();
+    if (status === 'passed') out = out.filter(r => r.passed);
+    if (status === 'failed') out = out.filter(r => !r.passed);
+    if (tag) {
+      out = out.filter(r => {
+        const tags = typeof r.tags === 'string' ? JSON.parse(r.tags || '[]') : (r.tags || []);
+        return tags.includes(tag);
+      });
+    }
+    if (sort === 'pass_rate') {
+      out.sort((a, b) => (b.passed_turns / b.total_turns) - (a.passed_turns / a.total_turns));
+    } else if (sort === 'latency') {
+      out.sort((a, b) => (a.avg_first_byte_ms || 9999) - (b.avg_first_byte_ms || 9999));
+    }
+    return out;
+  }
+
+  function renderRuns(runs) {
+    if (!runs.length) {
+      content.innerHTML = '<div class="empty">No runs match the current filters.</div>';
+      pagination.style.display = 'none';
+      return;
+    }
+
+    const page = runs.slice(offset, offset + PAGE_SIZE);
+    let html = `<div class="table-wrap"><table>
+      <thead><tr>
+        <th>ID</th>
+        <th>Scenario</th>
+        <th>Status</th>
+        <th>Turns</th>
+        <th>Avg First Byte</th>
+        <th>Avg Total</th>
+        <th>Transport</th>
+        <th>Tags</th>
+        <th>Date</th>
+      </tr></thead><tbody>`;
+
+    for (const r of page) {
+      const tags = typeof r.tags === 'string' ? JSON.parse(r.tags || '[]') : (r.tags || []);
+      const tagsHtml = tags.map(t => `<span class="tag">${VC.esc(t)}</span>`).join('');
+      const passRate = r.total_turns ? ((r.passed_turns / r.total_turns) * 100).toFixed(0) + '%' : '—';
+
+      html += `<tr onclick="VC.go('/run/${r.id}')" style="cursor:pointer;">
+        <td><code>${r.id.slice(0, 8)}</code></td>
+        <td>${VC.esc(r.scenario_name)}</td>
+        <td>${VC.badge(r.passed)}</td>
+        <td>${r.passed_turns}/${r.total_turns} <span style="color:var(--text-muted);font-size:0.78rem;">(${passRate})</span></td>
+        <td class="${VC.latencyClass(r.avg_first_byte_ms)}">${VC.formatMs(r.avg_first_byte_ms)}</td>
+        <td class="${VC.latencyClass(r.avg_total_ms)}">${VC.formatMs(r.avg_total_ms)}</td>
+        <td>${VC.esc(r.transport_type || '—')}</td>
+        <td>${tagsHtml || '—'}</td>
+        <td>${VC.formatDate(r.created_at)}</td>
+      </tr>`;
+    }
+
+    html += '</tbody></table></div>';
+    content.innerHTML = html;
+
+    const total = runs.length;
+    const showing = Math.min(offset + PAGE_SIZE, total);
+    pageInfo.textContent = `${offset + 1}–${showing} of ${total}`;
+    btnPrev.disabled = offset === 0;
+    btnNext.disabled = offset + PAGE_SIZE >= total;
+    pagination.style.display = total > PAGE_SIZE ? 'flex' : 'none';
+    subtitle.textContent = `${total} run${total !== 1 ? 's' : ''}`;
+  }
+
+  async function loadAll() {
+    content.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading history...</div>';
+    try {
+      const scenario = scenarioSel.value;
+      let url = '/api/runs?limit=500&offset=0';
+      if (scenario) url += '&scenario=' + encodeURIComponent(scenario);
+      const data = await VC.fetchAPI(url);
+      allRuns = data.runs || [];
+      offset = 0;
+      render();
+    } catch (err) {
+      content.innerHTML = `<div class="empty">Error: ${VC.esc(err.message)}</div>`;
+    }
+  }
+
+  function render() {
+    const filtered = applyClientFilters(allRuns);
+    renderRuns(filtered);
+  }
+
+  scenarioSel.onchange = () => { offset = 0; loadAll(); };
+  statusSel.onchange = () => { offset = 0; render(); };
+  tagInput.oninput = () => { offset = 0; render(); };
+  sortSel.onchange = () => { offset = 0; render(); };
+  document.getElementById('btn-reset').onclick = () => {
+    scenarioSel.value = '';
+    statusSel.value = '';
+    tagInput.value = '';
+    sortSel.value = 'date';
+    offset = 0;
+    loadAll();
+  };
+  btnPrev.onclick = () => { offset = Math.max(0, offset - PAGE_SIZE); render(); };
+  btnNext.onclick = () => { offset += PAGE_SIZE; render(); };
+
+  loadAll();
+})();
+</script>
+{% endblock %}

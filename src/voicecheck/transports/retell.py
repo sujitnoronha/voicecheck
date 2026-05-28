@@ -253,6 +253,14 @@ class RetellTransport(WebSocketTransport):
             )
             return None
 
+        if event_type in ("tool_call_invocation", "tool_call"):
+            self._handle_tool_call_event(payload)
+            return None
+
+        if event_type in ("tool_call_result", "tool_response"):
+            self._handle_tool_result_event(payload)
+            return None
+
         if event_type == "metadata":
             logger.info("Retell metadata: %s", json.dumps(payload, default=str)[:500])
             return None
@@ -268,6 +276,44 @@ class RetellTransport(WebSocketTransport):
         logger.debug("Retell: unhandled event type %r: %s", event_type, message[:300])
         return None
 
+    # ── Tool-call parsing ────────────────────────────────────────────
+
+    def _handle_tool_call_event(self, payload: dict) -> None:
+        """Surface a Retell tool/function-call invocation.
+
+        Retell shape: ``{"response_type": "tool_call_invocation",
+        "tool_call_id": "...", "name": "...", "arguments": "<json str>"}``.
+        Arguments arrive as a JSON-encoded string (OpenAI convention) so
+        we decode them defensively.
+        """
+        name = payload.get("name") or payload.get("tool_name") or ""
+        if not name:
+            return
+        args = _coerce_json_args(payload.get("arguments"))
+        call_id = payload.get("tool_call_id") or payload.get("id") or ""
+        logger.info("Retell tool call: %s args=%s", name, str(args)[:120])
+        self.emit_tool_call(name=name, args=args, call_id=call_id)
+
+    def _handle_tool_result_event(self, payload: dict) -> None:
+        """Patch the matching buffered tool call with its result.
+
+        Retell sends the result in a separate frame; mutating the existing
+        ``ToolCallEvent`` keeps each call+result pair on one row so the
+        ``tool_called`` evaluator can assert against ``event.result``.
+        """
+        call_id = payload.get("tool_call_id") or payload.get("id") or ""
+        name = payload.get("name") or payload.get("tool_name") or ""
+        result = payload.get("result")
+        if result is None:
+            result = payload.get("content")
+
+        for tc in reversed(self._tool_calls):
+            if (call_id and tc.call_id == call_id) or (not call_id and tc.name == name):
+                tc.result = result
+                return
+        if name:
+            self.emit_tool_call(name=name, args={}, result=result, call_id=call_id)
+
     async def _on_ws_disconnecting(self, ws: Any, config: dict) -> None:
         """Handle pre-disconnect cleanup.
 
@@ -280,4 +326,23 @@ class RetellTransport(WebSocketTransport):
 # ---------------------------------------------------------------------------
 # Transport registration
 # ---------------------------------------------------------------------------
+def _coerce_json_args(raw: Any) -> dict:
+    """Decode tool-call arguments from whatever shape Retell sent.
+
+    Retell sends ``arguments`` as a JSON-encoded string (OpenAI-style)
+    most of the time, but some agent configurations send it as a raw
+    dict. Always returns a dict.
+    """
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            decoded = json.loads(raw)
+            if isinstance(decoded, dict):
+                return decoded
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return {}
+
+
 register_transport("retell", RetellTransport)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -87,6 +88,29 @@ class TransportMetrics:
 
 
 @dataclass
+class ToolCallEvent:
+    """A tool/function call observed during a turn.
+
+    Populated by transports that surface agent tool calls over their
+    control channel (VAPI ``function-call`` messages, Retell
+    ``tool_call_invocation``, custom websocket events, etc.). Used by
+    tool-aware evaluators (e.g. assert tool X was called with args Y)
+    and emitted as span events so traces show the tool timeline.
+
+    ``call_id`` is the provider's invocation id (when present) — used
+    internally by transports to match a result event to the matching
+    invocation. Evaluators should ignore it.
+    """
+
+    name: str
+    args: dict[str, Any] = field(default_factory=dict)
+    result: Any = None
+    error: str = ""
+    timestamp: float = field(default_factory=time.monotonic)
+    call_id: str = ""
+
+
+@dataclass
 class TurnResult:
     """Result of a single conversation turn."""
 
@@ -97,6 +121,7 @@ class TurnResult:
     agent_audio: list[AudioFrame] = field(default_factory=list)
     metrics: TransportMetrics = field(default_factory=TransportMetrics)
     eval_results: list[EvalResult] = field(default_factory=list)
+    tool_calls: list[ToolCallEvent] = field(default_factory=list)
     # Populated when the turn crashed (persona LLM failure, transport error,
     # STT timeout, etc.). Non-empty means `passed` returns False regardless
     # of what individual evaluators reported — a crashed turn cannot pass.
@@ -143,6 +168,8 @@ class EvalContext:
     conversation: list[dict] = field(default_factory=list)
     # Transport/runner metadata for this turn (e.g., interrupt info, silence)
     turn_metadata: dict = field(default_factory=dict)
+    # Tool/function calls surfaced by the transport during this turn
+    tool_calls: list[ToolCallEvent] = field(default_factory=list)
 
 
 class Timer:

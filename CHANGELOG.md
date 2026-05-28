@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0
+
+### Added
+- **Observability**: tracing module (`voicecheck.observability`) plus a guide at `docs/guides/observability.md`.
+- **Tool-call evaluators**: `tool_called` and `tool_sequence` for asserting agent tool usage.
+- **Baselines**: store, compare, and report metric baselines (`storage/baselines.py`, `storage/output.py`).
+- **Scenario builder UI**: create/edit scenarios from the dashboard, with live YAML preview, history, live-run, baselines, and scenarios pages.
+- **`voicecheck.schema.json`**: JSON schema for scenario files.
+- Expanded CLI commands and richer VAPI/Retell transport support.
+
+### Changed
+- Sync `__version__` and the dashboard's reported version to the package version.
+
+### Fixed
+- Confine scenario-file web routes to the scenarios directory, blocking path traversal via the scenario name (read/write/delete).
+- Version mismatch where the CLI reported `0.1.0` while the package was `0.1.1`.
+
 ## 0.1.1
 
 - Replace kid-specific `persona_kid.yaml` example with `persona_frustrated_customer.yaml` — a broader de-escalation / empathy / resolution scenario.

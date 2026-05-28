@@ -1,0 +1,690 @@
+{% extends "base.html" %}
+{% block title %}VoiceCheck — {% if scenario_name %}Edit {{ scenario_name }}{% else %}New Scenario{% endif %}{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{% if scenario_name %}Edit Scenario{% else %}New Scenario{% endif %}</h1>
+    {% if scenario_name %}<p class="page-subtitle">{{ scenario_name }}</p>{% endif %}
+  </div>
+  <div style="display:flex;gap:0.5rem;">
+    <a href="/scenarios" class="btn btn-ghost">← Scenarios</a>
+  </div>
+</div>
+
+<div class="builder-layout">
+  <!-- Left: form -->
+  <div class="builder-form" id="builder-form">
+
+    <!-- HEADER -->
+    <section class="builder-section">
+      <h3>Scenario</h3>
+      <div class="form-row">
+        <label>Name <span class="req">*</span></label>
+        <input id="f-name" type="text" placeholder="my-voice-test" required>
+      </div>
+      <div class="form-row">
+        <label>Description</label>
+        <input id="f-description" type="text" placeholder="What this scenario tests">
+      </div>
+    </section>
+
+    <!-- TRANSPORT -->
+    <section class="builder-section">
+      <h3>Transport</h3>
+      <div class="form-row">
+        <label>Type</label>
+        <select id="f-transport-type">
+          <option value="echo">Echo (local dev)</option>
+          <option value="vapi">Vapi</option>
+          <option value="retell">Retell</option>
+          <option value="daily">Daily</option>
+          <option value="livekit">LiveKit</option>
+        </select>
+      </div>
+      <div id="transport-fields"></div>
+    </section>
+
+    <!-- AUDIO -->
+    <section class="builder-section">
+      <h3>Audio</h3>
+      <div class="form-row form-row-2">
+        <div>
+          <label>TTS Provider</label>
+          <select id="f-tts">
+            <option value="edge">Edge TTS (free)</option>
+            <option value="openai">OpenAI</option>
+            <option value="elevenlabs">ElevenLabs</option>
+          </select>
+        </div>
+        <div>
+          <label>STT Provider</label>
+          <select id="f-stt">
+            <option value="whisper">Whisper (local)</option>
+            <option value="openai">OpenAI</option>
+            <option value="deepgram">Deepgram</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Language <span style="color:var(--text-muted);font-size:0.78rem;">(optional, e.g. en-US)</span></label>
+        <input id="f-language" type="text" placeholder="en-US">
+      </div>
+    </section>
+
+    <!-- MODE TABS -->
+    <section class="builder-section">
+      <h3>Mode</h3>
+      <div class="tab-bar" style="margin-bottom:1rem;">
+        <button class="tab-btn active" data-mode="scripted">Scripted</button>
+        <button class="tab-btn" data-mode="questions">Questions</button>
+        <button class="tab-btn" data-mode="persona">Persona</button>
+        <button class="tab-btn" data-mode="guided">Guided</button>
+      </div>
+
+      <!-- SCRIPTED -->
+      <div class="mode-pane" id="mode-scripted">
+        <div id="turns-list"></div>
+        <button class="btn btn-ghost btn-sm" id="btn-add-turn" style="margin-top:0.5rem;">+ Add Turn</button>
+      </div>
+
+      <!-- QUESTIONS -->
+      <div class="mode-pane" id="mode-questions" style="display:none;">
+        <label style="font-size:0.82rem;color:var(--text-muted);">One question per line</label>
+        <textarea id="f-questions" rows="6" placeholder="What is my account balance?&#10;Can you transfer funds?&#10;What are your hours?" style="width:100%;margin-top:0.4rem;resize:vertical;"></textarea>
+      </div>
+
+      <!-- PERSONA -->
+      <div class="mode-pane" id="mode-persona" style="display:none;">
+        <div class="form-row form-row-2">
+          <div>
+            <label>Name</label>
+            <input id="p-name" type="text" placeholder="Test User">
+          </div>
+          <div>
+            <label>Max Turns</label>
+            <input id="p-max-turns" type="number" value="5" min="1" max="50">
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Description</label>
+          <textarea id="p-description" rows="2" placeholder="A curious customer asking about account features"></textarea>
+        </div>
+        <div class="form-row">
+          <label>Personality</label>
+          <input id="p-personality" type="text" placeholder="friendly and direct">
+        </div>
+        <div class="form-row">
+          <label>Goals <span style="color:var(--text-muted);font-size:0.78rem;">(one per line)</span></label>
+          <textarea id="p-goals" rows="3" placeholder="Check account balance&#10;Ask about transfer fees"></textarea>
+        </div>
+        <div class="form-row">
+          <label>Opening Message</label>
+          <input id="p-opening" type="text" placeholder="Hi, I need some help with my account">
+        </div>
+        <div class="form-row">
+          <label>LLM Model</label>
+          <input id="p-model" type="text" value="gpt-4o-mini">
+        </div>
+      </div>
+
+      <!-- GUIDED -->
+      <div class="mode-pane" id="mode-guided" style="display:none;">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0.75rem;margin-bottom:0.75rem;">
+          <strong style="font-size:0.82rem;">Persona</strong>
+          <div class="form-row form-row-2" style="margin-top:0.5rem;">
+            <div>
+              <label>Name</label>
+              <input id="gp-name" type="text" placeholder="Test User">
+            </div>
+            <div>
+              <label>Personality</label>
+              <input id="gp-personality" type="text" placeholder="friendly and persistent">
+            </div>
+          </div>
+        </div>
+        <div id="flow-steps-list"></div>
+        <button class="btn btn-ghost btn-sm" id="btn-add-step" style="margin-top:0.5rem;">+ Add Step</button>
+      </div>
+    </section>
+
+    <!-- GLOBAL EVALUATORS -->
+    <section class="builder-section">
+      <h3>Global Evaluators <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400;">applied to every turn</span></h3>
+      <div id="global-evals-list"></div>
+      <button class="btn btn-ghost btn-sm" id="btn-add-global-eval" style="margin-top:0.5rem;">+ Add Evaluator</button>
+    </section>
+
+    <!-- ACTIONS -->
+    <section class="builder-section" style="border:none;padding-bottom:0;">
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="btn-validate">Validate</button>
+        <button class="btn btn-secondary" id="btn-save">Save</button>
+        <button class="btn btn-primary" id="btn-save-run">Save & Run</button>
+      </div>
+      <div id="action-feedback" style="margin-top:0.75rem;font-size:0.85rem;"></div>
+    </section>
+  </div>
+
+  <!-- Right: YAML preview -->
+  <div class="builder-preview">
+    <div class="builder-preview-header">
+      <span style="font-weight:600;font-size:0.85rem;">YAML Preview</span>
+      <button class="btn btn-ghost btn-sm" id="btn-copy-yaml">Copy</button>
+    </div>
+    <pre id="yaml-preview" class="yaml-pre"></pre>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function() {
+  const EXISTING_NAME = {{ scenario_name | tojson }};
+  const EXISTING_YAML = {{ scenario_yaml | tojson }};
+
+  // ── Transport field specs ──────────────────────────────────
+  const TRANSPORT_FIELDS = {
+    echo: [],
+    vapi: [
+      {key:'api_key', label:'API Key', type:'password', ph:'${VAPI_API_KEY}'},
+      {key:'assistant_id', label:'Assistant ID', type:'text', ph:'asst_...'},
+    ],
+    retell: [
+      {key:'api_key', label:'API Key', type:'password', ph:'${RETELL_API_KEY}'},
+      {key:'agent_id', label:'Agent ID', type:'text', ph:'${RETELL_AGENT_ID}'},
+    ],
+    daily: [
+      {key:'room_url', label:'Room URL', type:'text', ph:'https://yourcompany.daily.co/room'},
+      {key:'token', label:'Token', type:'text', ph:'${DAILY_TOKEN}'},
+    ],
+    livekit: [
+      {key:'url', label:'LiveKit URL', type:'text', ph:'wss://your-livekit-server.com'},
+      {key:'token', label:'Token', type:'text', ph:'${LIVEKIT_TOKEN}'},
+      {key:'room_name', label:'Room Name', type:'text', ph:'my-room'},
+    ],
+  };
+
+  // ── Evaluator field specs ──────────────────────────────────
+  const EVAL_TYPES = ['keyword','latency','tool_called','tool_sequence','turn_count','llm_judge','rubric_judge'];
+  const EVAL_FIELDS = {
+    keyword: [
+      {key:'must_contain', label:'Required phrases (comma-separated)', type:'text'},
+      {key:'must_not_contain', label:'Forbidden phrases (comma-separated)', type:'text'},
+    ],
+    latency: [
+      {key:'max_first_byte_ms', label:'Max first byte (ms)', type:'number'},
+      {key:'max_total_ms', label:'Max total (ms)', type:'number'},
+    ],
+    tool_called: [
+      {key:'name', label:'Tool name', type:'text', req:true},
+      {key:'args_must_contain', label:'Args must contain (JSON)', type:'text', ph:'{"key":"value"}'},
+      {key:'min_calls', label:'Min calls', type:'number'},
+    ],
+    tool_sequence: [
+      {key:'sequence', label:'Tool sequence (comma-separated)', type:'text', req:true},
+      {key:'mode', label:'Mode', type:'select', opts:['subsequence','strict']},
+    ],
+    turn_count: [
+      {key:'min_words', label:'Min words in agent reply', type:'number'},
+      {key:'max_words', label:'Max words in agent reply', type:'number'},
+    ],
+    llm_judge: [
+      {key:'criteria', label:'Criteria', type:'textarea', req:true},
+      {key:'model', label:'Model', type:'text', ph:'gpt-4o-mini'},
+    ],
+    rubric_judge: [
+      {key:'dimensions', label:'Dimensions (comma-separated)', type:'text', req:true,
+       ph:'helpfulness, accuracy, tone'},
+      {key:'model', label:'Model', type:'text', ph:'gpt-4o-mini'},
+    ],
+  };
+
+  let activeMode = 'scripted';
+  let turnCount = 0;
+  let stepCount = 0;
+  let globalEvalCount = 0;
+
+  // ── Transport fields ────────────────────────────────────────
+  function renderTransportFields(type) {
+    const container = document.getElementById('transport-fields');
+    const fields = TRANSPORT_FIELDS[type] || [];
+    if (!fields.length) { container.innerHTML = '<p style="font-size:0.82rem;color:var(--text-muted);">No config required for Echo transport.</p>'; return; }
+    container.innerHTML = fields.map(f =>
+      `<div class="form-row">
+        <label>${f.label}${f.req?'<span class="req"> *</span>':''}</label>
+        <input data-tconfig="${VC.esc(f.key)}" type="${f.type||'text'}" placeholder="${f.ph||''}">
+      </div>`
+    ).join('');
+  }
+
+  document.getElementById('f-transport-type').onchange = e => { renderTransportFields(e.target.value); updatePreview(); };
+  renderTransportFields('echo');
+
+  // ── Evaluator row builder ───────────────────────────────────
+  function evalRow(containerId, idx) {
+    const row = document.createElement('div');
+    row.className = 'eval-row';
+    row.id = `eval-${containerId}-${idx}`;
+    row.innerHTML = `
+      <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem;">
+        <select class="eval-type-sel" style="flex:1;">
+          ${EVAL_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}
+        </select>
+        <button class="btn btn-danger btn-sm" data-remove-eval="${containerId}-${idx}">×</button>
+      </div>
+      <div class="eval-fields"></div>`;
+    row.querySelector('.eval-type-sel').onchange = e => { renderEvalFields(row, e.target.value); updatePreview(); };
+    row.querySelector('[data-remove-eval]').onclick = () => { row.remove(); updatePreview(); };
+    renderEvalFields(row, EVAL_TYPES[0]);
+    return row;
+  }
+
+  function renderEvalFields(row, type) {
+    const fields = EVAL_FIELDS[type] || [];
+    const container = row.querySelector('.eval-fields');
+    container.innerHTML = fields.map(f => {
+      if (f.type === 'select') {
+        return `<div class="form-row"><label>${f.label}</label><select data-ekey="${f.key}">${(f.opts||[]).map(o=>`<option>${o}</option>`).join('')}</select></div>`;
+      }
+      if (f.type === 'textarea') {
+        return `<div class="form-row"><label>${f.label}${f.req?'<span class="req"> *</span>':''}</label><textarea data-ekey="${f.key}" rows="2" placeholder="${f.ph||''}"></textarea></div>`;
+      }
+      return `<div class="form-row"><label>${f.label}${f.req?'<span class="req"> *</span>':''}</label><input data-ekey="${f.key}" type="${f.type||'text'}" placeholder="${f.ph||''}"></div>`;
+    }).join('');
+    container.querySelectorAll('input,select,textarea').forEach(el => el.oninput = updatePreview);
+  }
+
+  // ── Turn builder ────────────────────────────────────────────
+  function addTurn(userText = '') {
+    const idx = turnCount++;
+    const list = document.getElementById('turns-list');
+    const div = document.createElement('div');
+    div.className = 'turn-builder-row';
+    div.id = `turn-${idx}`;
+    div.innerHTML = `
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+        <span style="font-size:0.78rem;font-weight:600;color:var(--text-muted);min-width:52px;">Turn ${list.children.length+1}</span>
+        <input class="turn-user-text" type="text" placeholder="User says…" style="flex:1;" value="${VC.esc(userText)}">
+        <button class="btn btn-danger btn-sm" data-remove-turn="${idx}">×</button>
+      </div>
+      <div class="turn-evals-container" id="turn-evals-${idx}"></div>
+      <button class="btn btn-ghost btn-sm" style="font-size:0.72rem;" data-add-eval="${idx}">+ Evaluator</button>`;
+    div.querySelector('.turn-user-text').oninput = updatePreview;
+    div.querySelector(`[data-remove-turn="${idx}"]`).onclick = () => { div.remove(); updatePreview(); };
+    div.querySelector(`[data-add-eval="${idx}"]`).onclick = () => {
+      const evalIdx = globalEvalCount++;
+      const erow = evalRow(`turn-${idx}`, evalIdx);
+      div.querySelector(`#turn-evals-${idx}`).appendChild(erow);
+      updatePreview();
+    };
+    list.appendChild(div);
+    updatePreview();
+  }
+  document.getElementById('btn-add-turn').onclick = () => addTurn();
+
+  // ── Flow step builder ────────────────────────────────────────
+  function addStep(goal = '', name = '') {
+    const idx = stepCount++;
+    const list = document.getElementById('flow-steps-list');
+    const div = document.createElement('div');
+    div.className = 'turn-builder-row';
+    div.innerHTML = `
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+        <span style="font-size:0.78rem;font-weight:600;color:var(--text-muted);min-width:52px;">Step ${list.children.length+1}</span>
+        <input class="step-name" type="text" placeholder="Step name (optional)" style="min-width:130px;max-width:170px;" value="${VC.esc(name)}">
+        <input class="step-goal" type="text" placeholder="Goal for this step…" style="flex:1;" value="${VC.esc(goal)}">
+        <button class="btn btn-danger btn-sm" data-remove-step="${idx}">×</button>
+      </div>
+      <div id="step-evals-${idx}"></div>
+      <button class="btn btn-ghost btn-sm" style="font-size:0.72rem;" data-add-step-eval="${idx}">+ Evaluator</button>`;
+    div.querySelector('.step-name').oninput = updatePreview;
+    div.querySelector('.step-goal').oninput = updatePreview;
+    div.querySelector(`[data-remove-step="${idx}"]`).onclick = () => { div.remove(); updatePreview(); };
+    div.querySelector(`[data-add-step-eval="${idx}"]`).onclick = () => {
+      const erow = evalRow(`step-${idx}`, globalEvalCount++);
+      div.querySelector(`#step-evals-${idx}`).appendChild(erow);
+      updatePreview();
+    };
+    list.appendChild(div);
+    updatePreview();
+  }
+  document.getElementById('btn-add-step').onclick = () => addStep();
+
+  // ── Global evaluators ─────────────────────────────────────
+  document.getElementById('btn-add-global-eval').onclick = () => {
+    const erow = evalRow('global', globalEvalCount++);
+    document.getElementById('global-evals-list').appendChild(erow);
+    updatePreview();
+  };
+
+  // ── Mode tabs ─────────────────────────────────────────────
+  document.querySelectorAll('.tab-btn[data-mode]').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.tab-btn[data-mode]').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.mode-pane').forEach(p => p.style.display = 'none');
+      btn.classList.add('active');
+      document.getElementById('mode-' + btn.dataset.mode).style.display = '';
+      activeMode = btn.dataset.mode;
+      updatePreview();
+    };
+  });
+
+  // ── Live input listeners ──────────────────────────────────
+  ['f-name','f-description','f-tts','f-stt','f-language','f-questions','p-name','p-max-turns','p-description','p-personality','p-goals','p-opening','p-model','gp-name','gp-personality'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.oninput = updatePreview;
+  });
+
+  // ── Gather form state ──────────────────────────────────────
+  function getFormState() {
+    const transportType = document.getElementById('f-transport-type').value;
+    const transportConfig = {};
+    document.querySelectorAll('[data-tconfig]').forEach(el => {
+      if (el.value.trim()) transportConfig[el.dataset.tconfig] = el.value.trim();
+    });
+
+    function collectEvals(container) {
+      return [...container.querySelectorAll('.eval-row')].map(row => {
+        const type = row.querySelector('.eval-type-sel').value;
+        const fields = {};
+        row.querySelectorAll('[data-ekey]').forEach(el => { if(el.value.trim()) fields[el.dataset.ekey] = el.value.trim(); });
+        return {type, fields};
+      });
+    }
+
+    const turns = [...document.getElementById('turns-list').querySelectorAll('.turn-builder-row')].map(row => ({
+      user: row.querySelector('.turn-user-text')?.value || '',
+      evaluators: collectEvals(row),
+    }));
+
+    const flowSteps = [...document.getElementById('flow-steps-list').querySelectorAll('.turn-builder-row')].map(row => ({
+      name: row.querySelector('.step-name')?.value || '',
+      goal: row.querySelector('.step-goal')?.value || '',
+      evaluators: collectEvals(row),
+    }));
+
+    return {
+      name: document.getElementById('f-name').value.trim(),
+      description: document.getElementById('f-description').value.trim(),
+      transport_type: transportType,
+      transport_config: transportConfig,
+      tts_provider: document.getElementById('f-tts').value,
+      stt_provider: document.getElementById('f-stt').value,
+      language: document.getElementById('f-language').value.trim(),
+      mode: activeMode,
+      turns,
+      questions_text: document.getElementById('f-questions').value,
+      persona: {
+        name: document.getElementById('p-name').value.trim(),
+        description: document.getElementById('p-description').value.trim(),
+        personality: document.getElementById('p-personality').value.trim(),
+        goals: document.getElementById('p-goals').value.trim().split('\n').filter(Boolean),
+        opening: document.getElementById('p-opening').value.trim(),
+        max_turns: parseInt(document.getElementById('p-max-turns').value) || 5,
+        model: document.getElementById('p-model').value.trim() || 'gpt-4o-mini',
+      },
+      guided_persona: {
+        name: document.getElementById('gp-name').value.trim(),
+        personality: document.getElementById('gp-personality').value.trim(),
+      },
+      flow_steps: flowSteps,
+      global_evaluators: collectEvals(document.getElementById('global-evals-list')),
+    };
+  }
+
+  // ── YAML preview ──────────────────────────────────────────
+  let previewTimer = null;
+  async function updatePreview() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(async () => {
+      try {
+        const state = getFormState();
+        const resp = await VC.fetchJSON('/api/scenario-files/preview-yaml', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(state),
+        });
+        document.getElementById('yaml-preview').textContent = resp.yaml;
+      } catch(e) { /* ignore preview errors */ }
+    }, 300);
+  }
+
+  document.getElementById('btn-copy-yaml').onclick = () => {
+    const text = document.getElementById('yaml-preview').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('btn-copy-yaml');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+  };
+
+  // ── Validate ──────────────────────────────────────────────
+  document.getElementById('btn-validate').onclick = async () => {
+    const yaml = document.getElementById('yaml-preview').textContent;
+    const fb = document.getElementById('action-feedback');
+    fb.innerHTML = '<span style="color:var(--text-muted);">Validating…</span>';
+    try {
+      const res = await VC.fetchJSON('/api/scenario-files/validate', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({yaml}),
+      });
+      if (res.valid) {
+        fb.innerHTML = '<span style="color:var(--green);">✓ Scenario is valid</span>';
+      } else {
+        fb.innerHTML = '<span style="color:var(--red);">Validation errors:</span><ul style="margin:0.3rem 0 0 1.2rem;">' + res.errors.map(e => `<li>${VC.esc(e)}</li>`).join('') + '</ul>';
+      }
+    } catch(e) { fb.innerHTML = `<span style="color:var(--red);">Error: ${VC.esc(e.message)}</span>`; }
+  };
+
+  // ── Save ─────────────────────────────────────────────────
+  async function saveScenario() {
+    const yaml = document.getElementById('yaml-preview').textContent;
+    const name = document.getElementById('f-name').value.trim();
+    if (!name) { alert('Please set a scenario name.'); return null; }
+    const fb = document.getElementById('action-feedback');
+    fb.innerHTML = '<span style="color:var(--text-muted);">Saving…</span>';
+    try {
+      let resp;
+      if (EXISTING_NAME) {
+        resp = await VC.fetchJSON('/api/scenario-files/' + encodeURIComponent(EXISTING_NAME), {
+          method:'PUT', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({yaml}),
+        });
+      } else {
+        resp = await VC.fetchJSON('/api/scenario-files', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({yaml}),
+        });
+      }
+      fb.innerHTML = `<span style="color:var(--green);">✓ Saved as "${resp.name || EXISTING_NAME}"</span>`;
+      return resp.name || EXISTING_NAME;
+    } catch(e) {
+      fb.innerHTML = `<span style="color:var(--red);">Save failed: ${VC.esc(e.message)}</span>`;
+      return null;
+    }
+  }
+
+  document.getElementById('btn-save').onclick = saveScenario;
+
+  document.getElementById('btn-save-run').onclick = async () => {
+    const savedName = await saveScenario();
+    if (!savedName) return;
+    const fb = document.getElementById('action-feedback');
+    fb.innerHTML = fb.innerHTML + ' — <span style="color:var(--text-muted);">Starting run…</span>';
+    try {
+      const resp = await VC.fetchJSON('/api/runs', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({scenario_name: savedName}),
+      });
+      VC.go(resp.live_url);
+    } catch(e) {
+      fb.innerHTML += `<span style="color:var(--red);"> Run failed: ${VC.esc(e.message)}</span>`;
+    }
+  };
+
+  // ── Load existing scenario ────────────────────────────────
+  if (EXISTING_YAML) {
+    let parsed = null;
+    try {
+      parsed = (window.jsyaml ? jsyaml.load(EXISTING_YAML) : null);
+    } catch(e) {
+      parsed = null;
+    }
+    if (parsed && typeof parsed === 'object') {
+      populateForm(parsed);
+      // Server-side preview will reflect what the form produces; this also
+      // makes any drift (form lost a field) visible immediately.
+      updatePreview();
+    } else {
+      // Couldn't parse — fall back to raw YAML so the user can still edit/save.
+      document.getElementById('yaml-preview').textContent = EXISTING_YAML;
+    }
+  } else {
+    addTurn(); // Start with one empty turn
+    updatePreview();
+  }
+
+  // ── Populate form from parsed YAML ────────────────────────
+  function populateForm(p) {
+    if (p.name) document.getElementById('f-name').value = p.name;
+    if (p.description) document.getElementById('f-description').value = p.description;
+
+    // Transport
+    const transport = p.transport || {};
+    const tType = transport.type || 'echo';
+    const tSel = document.getElementById('f-transport-type');
+    tSel.value = tType;
+    renderTransportFields(tType);
+    const tConfig = transport.config || {};
+    for (const [k, v] of Object.entries(tConfig)) {
+      const inp = document.querySelector(`[data-tconfig="${CSS.escape(k)}"]`);
+      if (inp) inp.value = (v == null ? '' : String(v));
+    }
+
+    // Audio
+    const audio = p.audio || {};
+    if (audio.tts_provider) document.getElementById('f-tts').value = audio.tts_provider;
+    if (audio.stt_provider) document.getElementById('f-stt').value = audio.stt_provider;
+    if (audio.language) document.getElementById('f-language').value = audio.language;
+
+    // Detect mode from YAML shape (matches server _detect_mode)
+    let mode = 'scripted';
+    if (p.flow) mode = 'guided';
+    else if (p.questions) mode = 'questions';
+    else if (p.persona) mode = 'persona';
+    else if (p.turns) mode = 'scripted';
+    selectMode(mode);
+
+    if (mode === 'scripted' && Array.isArray(p.turns)) {
+      for (const t of p.turns) {
+        addTurnFromYaml(t);
+      }
+    } else if (mode === 'questions' && Array.isArray(p.questions)) {
+      document.getElementById('f-questions').value = p.questions.join('\n');
+    } else if (mode === 'persona' || mode === 'guided') {
+      const persona = p.persona || {};
+      const idPrefix = (mode === 'guided') ? 'gp-' : 'p-';
+      if (mode === 'persona') {
+        if (persona.name) document.getElementById('p-name').value = persona.name;
+        if (persona.description) document.getElementById('p-description').value = persona.description;
+        if (persona.personality) document.getElementById('p-personality').value = persona.personality;
+        if (Array.isArray(persona.goals)) document.getElementById('p-goals').value = persona.goals.join('\n');
+        if (persona.opening) document.getElementById('p-opening').value = persona.opening;
+        if (persona.max_turns != null) document.getElementById('p-max-turns').value = persona.max_turns;
+        if (persona.model) document.getElementById('p-model').value = persona.model;
+      } else {
+        if (persona.name) document.getElementById('gp-name').value = persona.name;
+        if (persona.personality) document.getElementById('gp-personality').value = persona.personality;
+        if (Array.isArray(p.flow)) {
+          for (const step of p.flow) addStepFromYaml(step);
+        }
+      }
+    }
+
+    // Global per-turn evaluators
+    if (Array.isArray(p.per_turn_expect)) {
+      for (const ev of p.per_turn_expect) {
+        addGlobalEvalFromYaml(ev);
+      }
+    }
+  }
+
+  function selectMode(mode) {
+    activeMode = mode;
+    document.querySelectorAll('.tab-btn[data-mode]').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === mode);
+    });
+    document.querySelectorAll('.mode-pane').forEach(p => p.style.display = 'none');
+    const pane = document.getElementById('mode-' + mode);
+    if (pane) pane.style.display = '';
+  }
+
+  function addTurnFromYaml(turn) {
+    addTurn(turn.user || '');
+    // Last appended turn is the target
+    const list = document.getElementById('turns-list');
+    const row = list.lastElementChild;
+    if (!row) return;
+    const addEvalBtn = row.querySelector('[data-add-eval]');
+    const expects = turn.expect || [];
+    for (const ev of expects) {
+      addEvalBtn.click();
+      const evalsContainer = row.querySelector('.turn-evals-container');
+      const evalRowEl = evalsContainer.lastElementChild;
+      applyEvalToRow(evalRowEl, ev);
+    }
+  }
+
+  function addStepFromYaml(step) {
+    addStep(step.goal || '', step.name || '');
+    const list = document.getElementById('flow-steps-list');
+    const row = list.lastElementChild;
+    if (!row) return;
+    const addBtn = row.querySelector('[data-add-step-eval]');
+    const expects = step.expect || [];
+    for (const ev of expects) {
+      addBtn.click();
+      const evalsContainer = row.querySelector(`[id^="step-evals-"]`);
+      const evalRowEl = evalsContainer.lastElementChild;
+      applyEvalToRow(evalRowEl, ev);
+    }
+  }
+
+  function addGlobalEvalFromYaml(ev) {
+    document.getElementById('btn-add-global-eval').click();
+    const list = document.getElementById('global-evals-list');
+    applyEvalToRow(list.lastElementChild, ev);
+  }
+
+  function applyEvalToRow(row, ev) {
+    if (!row || !ev || !ev.type) return;
+    const sel = row.querySelector('.eval-type-sel');
+    if (!sel) return;
+    if (![...sel.options].some(o => o.value === ev.type)) {
+      // Unknown evaluator type — leave row at default; user can pick.
+      return;
+    }
+    sel.value = ev.type;
+    renderEvalFields(row, ev.type);
+    // Fill fields
+    for (const [k, v] of Object.entries(ev)) {
+      if (k === 'type') continue;
+      const el = row.querySelector(`[data-ekey="${CSS.escape(k)}"]`);
+      if (!el) continue;
+      if (Array.isArray(v)) {
+        el.value = v.join(', ');
+      } else if (v != null && typeof v === 'object') {
+        el.value = JSON.stringify(v);
+      } else if (v != null) {
+        el.value = String(v);
+      }
+    }
+  }
+
+})();
+</script>
+{% endblock %}

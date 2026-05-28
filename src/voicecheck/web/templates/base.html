@@ -6,6 +6,7 @@
   <title>{% block title %}VoiceCheck{% endblock %}</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <link rel="stylesheet" href="/static/style.css">
+  {% block head %}{% endblock %}
 </head>
 <body>
   <nav class="nav">
@@ -15,8 +16,10 @@
       <span class="nav-tag">dashboard</span>
     </a>
     <div class="nav-links">
-      <a href="/">Scenarios</a>
-      <a href="/runs">All Runs</a>
+      <a href="/">Overview</a>
+      <a href="/scenarios">Scenarios</a>
+      <a href="/history">History</a>
+      <a href="/baselines">Baselines</a>
       <a href="/compare">Compare</a>
     </div>
   </nav>

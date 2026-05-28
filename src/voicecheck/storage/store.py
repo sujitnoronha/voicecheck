@@ -22,6 +22,7 @@ from voicecheck.core.scenario import ScenarioReport
 logger = logging.getLogger("voicecheck.storage")
 
 DEFAULT_DB_PATH = Path.home() / ".voicecheck" / "results.db"
+DEFAULT_OUTPUT_DIR = Path.home() / ".voicecheck"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -35,6 +36,7 @@ CREATE TABLE IF NOT EXISTS runs (
     transport_type TEXT,
     tags TEXT,
     conversation_eval TEXT,
+    artifacts_dir TEXT,
     created_at TEXT NOT NULL
 );
 
@@ -74,7 +76,27 @@ class ResultStore:
             conn.execute("SELECT conversation_eval FROM runs LIMIT 1")
         except sqlite3.OperationalError:
             conn.execute("ALTER TABLE runs ADD COLUMN conversation_eval TEXT")
+        # Migration: add artifacts_dir column (audio replay support)
+        try:
+            conn.execute("SELECT artifacts_dir FROM runs LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE runs ADD COLUMN artifacts_dir TEXT")
+        # Migration: add run_dir column (per-run output directory)
+        try:
+            conn.execute("SELECT run_dir FROM runs LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE runs ADD COLUMN run_dir TEXT")
+        # Migration: add status/timing columns for async runs (Phase 5)
+        try:
+            conn.execute("SELECT status FROM runs LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE runs ADD COLUMN status TEXT DEFAULT 'completed'")
         conn.commit()
+
+        # Initialise baselines table
+        from voicecheck.storage.baselines import BaselineStore
+
+        self._baselines = BaselineStore(conn)
 
     def _get_conn(self) -> sqlite3.Connection:
         if self._conn is None:
@@ -84,20 +106,37 @@ class ResultStore:
             self._conn.execute("PRAGMA foreign_keys=ON")
         return self._conn
 
+    @property
+    def baselines(self):
+        return self._baselines
+
     def save_report(
         self,
         report: ScenarioReport,
         transport_type: str = "",
         tags: list[str] | None = None,
+        artifacts_dir: str | Path | None = None,
+        run_id: str | None = None,
+        run_dir: str | Path | None = None,
     ) -> str:
         """Save a scenario report to the database.
+
+        Args:
+            artifacts_dir: Optional path to a directory holding turn WAVs and
+                full_conversation.wav for this run. When set, the dashboard
+                exposes per-turn audio replay for this run.
+            run_id: Optional pre-generated run ID. Useful when the caller needs
+                to know the ID before saving (e.g. to write artifacts to a
+                run-scoped directory). If omitted, a UUID is generated.
 
         Returns:
             The run ID (UUID string).
         """
         conn = self._get_conn()
-        run_id = str(uuid.uuid4())
+        run_id = run_id or str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
+        artifacts_dir_str = str(Path(artifacts_dir).resolve()) if artifacts_dir else None
+        run_dir_str = str(Path(run_dir).resolve()) if run_dir else None
 
         # Compute averages
         latencies_fb = [
@@ -108,10 +147,10 @@ class ResultStore:
         avg_total = sum(latencies_total) / len(latencies_total) if latencies_total else 0.0
 
         conn.execute(
-            """INSERT INTO runs (id, scenario_name, passed, total_turns, passed_turns,
+            """INSERT OR REPLACE INTO runs (id, scenario_name, passed, total_turns, passed_turns,
                avg_first_byte_ms, avg_total_ms, transport_type, tags, conversation_eval,
-               created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               artifacts_dir, run_dir, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 run_id,
                 report.scenario_name,
@@ -123,6 +162,9 @@ class ResultStore:
                 transport_type,
                 json.dumps(tags or []),
                 json.dumps(report.conversation_eval) if report.conversation_eval else None,
+                artifacts_dir_str,
+                run_dir_str,
+                "completed",
                 now,
             ),
         )
@@ -200,6 +242,34 @@ class ResultStore:
         if result.get("conversation_eval"):
             result["conversation_eval"] = json.loads(result["conversation_eval"])
         return result
+
+    def get_call_log(self, run_id: str) -> list[dict[str, Any]] | None:
+        """Return parsed call_log.jsonl events for a run, or None if unavailable."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT run_dir FROM runs WHERE id = ?", (run_id,)).fetchone()
+        if not row or not row["run_dir"]:
+            return None
+        log_path = Path(row["run_dir"]) / "call_log.jsonl"
+        if not log_path.exists():
+            return None
+        events = []
+        for line in log_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        return events
+
+    def get_scenario_file(self, run_id: str) -> str | None:
+        """Return the scenario.yaml snapshot content for a run, or None."""
+        conn = self._get_conn()
+        row = conn.execute("SELECT run_dir FROM runs WHERE id = ?", (run_id,)).fetchone()
+        if not row or not row["run_dir"]:
+            return None
+        p = Path(row["run_dir"]) / "scenario.yaml"
+        return p.read_text(encoding="utf-8") if p.exists() else None
 
     def get_scenario_history(self, scenario_name: str, limit: int = 100) -> list[dict[str, Any]]:
         """Get historical runs for a scenario (for trend charts)."""
@@ -284,6 +354,55 @@ class ResultStore:
             s["p95_total_ms"] = total["p95"]
             s["p99_total_ms"] = total["p99"]
         return scenarios
+
+    def get_run_artifacts(self, run_id: str) -> dict[str, Any] | None:
+        """Return artifact WAVs available for a run.
+
+        Returns a dict shaped like:
+            {
+              "dir": "/abs/path/to/artifacts",
+              "full_conversation": "full_conversation.wav" | None,
+              "turns": [
+                 {"index": 0, "user": "turn_1_user.wav" | None,
+                              "agent": "turn_1_agent.wav" | None},
+                 ...
+              ],
+            }
+
+        Only filenames directly inside the artifacts dir are returned (no
+        subpaths), so callers can safely serve them by name with an allowlist
+        check. Returns None if the run does not exist or has no artifacts_dir
+        recorded. Missing files on disk are surfaced as None entries rather
+        than errors — the UI can still render the transcript.
+        """
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT artifacts_dir, total_turns FROM runs WHERE id = ?", (run_id,)
+        ).fetchone()
+        if not row or not row["artifacts_dir"]:
+            return None
+
+        dir_path = Path(row["artifacts_dir"])
+        if not dir_path.is_dir():
+            return None
+
+        full_name = "full_conversation.wav"
+        full = full_name if (dir_path / full_name).is_file() else None
+
+        turns: list[dict[str, Any]] = []
+        for i in range(row["total_turns"]):
+            n = i + 1
+            user_name = f"turn_{n}_user.wav"
+            agent_name = f"turn_{n}_agent.wav"
+            turns.append(
+                {
+                    "index": i,
+                    "user": user_name if (dir_path / user_name).is_file() else None,
+                    "agent": agent_name if (dir_path / agent_name).is_file() else None,
+                }
+            )
+
+        return {"dir": str(dir_path), "full_conversation": full, "turns": turns}
 
     def delete_run(self, run_id: str) -> bool:
         """Delete a run and its turns."""

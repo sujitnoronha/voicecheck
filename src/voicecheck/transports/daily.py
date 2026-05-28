@@ -32,6 +32,7 @@ class DailyTransport(Transport):
     """
 
     def __init__(self) -> None:
+        super().__init__()
         self._call_client: Any = None
         self._daily: Any = None
         self._agent_audio_frames: list[AudioFrame] = []
@@ -366,6 +367,7 @@ class DailyTransport(Transport):
         """
         self._metrics = TransportMetrics()
         self._agent_audio_frames = []
+        super().reset_metrics()
 
     # ── Private helpers ──────────────────────────────────────────────
 

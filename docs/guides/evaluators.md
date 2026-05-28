@@ -13,6 +13,7 @@ Every evaluator receives an `EvalContext` containing:
 - `turn_index` -- which turn this is (0-based)
 - `scenario_name` -- name of the running scenario
 - `conversation` -- full conversation history up to this point
+- `tool_calls` -- list of `ToolCallEvent` objects observed this turn (populated by VAPI/Retell automatically; see `tool_called` and `tool_sequence`)
 
 Every evaluator returns an `EvalResult`:
 
@@ -152,6 +153,63 @@ expect:
 #### Word counting
 
 Words are counted by splitting the agent text on whitespace: `len(text.split())`. An empty or missing agent response has 0 words and will fail if `min_words >= 1` (the default).
+
+---
+
+### tool_called
+
+Asserts that the agent invoked a specific tool/function on its control channel during this turn. Reads `context.tool_calls`, which is populated automatically by the VAPI and Retell transports (custom transports plug in by calling `self.emit_tool_call(name, args, result)`).
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | required | The tool name to look for. |
+| `args_must_contain` | dict | `{}` | All listed `key: value` pairs must be present on at least one matched call. |
+| `args_must_not_contain` | dict | `{}` | If any matched call has a forbidden `key: value`, the evaluator fails. |
+| `min_calls` | int | `1` | Minimum number of times the tool must have been invoked this turn. |
+
+#### YAML example
+
+```yaml
+expect:
+  - type: tool_called
+    name: lookup_balance
+    args_must_contain:
+      account_id: "acct-123"
+  - type: tool_called
+    name: send_pii_to_third_party
+    args_must_not_contain:
+      consent: false
+```
+
+---
+
+### tool_sequence
+
+Asserts that tool calls happened in a specific order during this turn. Useful for verifying multi-step agent flows (e.g. authenticate → fetch → respond).
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `sequence` | list of strings | required | Ordered tool names that must appear. |
+| `mode` | string | `"subsequence"` | `"subsequence"` allows other calls between the listed ones; `"strict"` requires the tool call list to equal the sequence exactly. |
+
+#### YAML example
+
+```yaml
+expect:
+  - type: tool_sequence
+    sequence: [authenticate, lookup_account, lookup_balance]
+    mode: subsequence
+
+  - type: tool_sequence
+    sequence: [authenticate, lookup_balance]
+    mode: strict   # rejects any extra tools
+```
+
+`tool_sequence` operates on the current turn's tool calls only. For cross-turn flows, attach a `tool_sequence` check to whichever turn completes the sequence.
 
 ---
 

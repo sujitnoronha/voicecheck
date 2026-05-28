@@ -59,6 +59,7 @@ class EchoTransport(Transport):
     """
 
     def __init__(self) -> None:
+        super().__init__()
         self._metrics = TransportMetrics()
         self._config: dict[str, Any] = {}
         self._response_text: str = _DEFAULT_RESPONSE_TEXT
@@ -115,6 +116,7 @@ class EchoTransport(Transport):
 
     def reset_metrics(self) -> None:
         self._metrics = TransportMetrics()
+        super().reset_metrics()
 
     def validate_config(self, config: dict) -> list[str]:
         errors: list[str] = []

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}VoiceCheck — Scenarios{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Scenarios</h1>
+    <p class="page-subtitle" id="page-subtitle">Loading...</p>
+  </div>
+  <a href="/scenarios/new" class="btn btn-primary">+ New Scenario</a>
+</div>
+
+<div id="scenarios-content">
+  <div class="loading"><div class="spinner"></div><br>Loading scenarios...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function() {
+  const container = document.getElementById('scenarios-content');
+  const subtitle = document.getElementById('page-subtitle');
+
+  async function load() {
+    try {
+      const files = await VC.fetchAPI('/api/scenario-files');
+      subtitle.textContent = `${files.length} scenario${files.length !== 1 ? 's' : ''}`;
+
+      if (!files.length) {
+        container.innerHTML = `
+          <div class="empty">
+            No scenarios yet.<br>
+            <a href="/scenarios/new" class="btn btn-primary" style="margin-top:1rem;display:inline-block;">Create your first scenario</a>
+          </div>`;
+        return;
+      }
+
+      const modeBadge = m => {
+        const colors = {scripted:'var(--accent)',questions:'var(--green)',persona:'var(--yellow)',guided:'#a855f7'};
+        return `<span style="font-size:0.72rem;font-weight:600;padding:2px 7px;border-radius:999px;background:${colors[m]||'var(--border)'};color:#fff;">${m||'?'}</span>`;
+      };
+
+      let html = `<div class="table-wrap"><table>
+        <thead><tr>
+          <th>Name</th>
+          <th>Mode</th>
+          <th>Transport</th>
+          <th>Description</th>
+          <th>Actions</th>
+        </tr></thead><tbody>`;
+
+      for (const f of files) {
+        html += `<tr>
+          <td><strong>${VC.esc(f.name)}</strong></td>
+          <td>${modeBadge(f.mode)}</td>
+          <td>${VC.esc(f.transport_type || '—')}</td>
+          <td style="color:var(--text-muted);font-size:0.82rem;">${VC.esc(f.description || '')}</td>
+          <td style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" data-run="${VC.esc(f.name)}">▶ Run</button>
+            <a href="/scenarios/${encodeURIComponent(f.name)}/edit" class="btn btn-ghost btn-sm">Edit</a>
+            <a href="/scenario/${encodeURIComponent(f.name)}" class="btn btn-ghost btn-sm">History</a>
+            <button class="btn btn-danger btn-sm" data-delete="${VC.esc(f.name)}">Delete</button>
+          </td>
+        </tr>`;
+      }
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+
+      container.querySelectorAll('[data-run]').forEach(btn => {
+        btn.onclick = async () => {
+          btn.disabled = true;
+          btn.textContent = '…';
+          try {
+            const resp = await VC.fetchJSON('/api/runs', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({scenario_name: btn.dataset.run}),
+            });
+            VC.go(resp.live_url);
+          } catch(e) {
+            alert('Error: ' + e.message);
+            btn.disabled = false;
+            btn.textContent = '▶ Run';
+          }
+        };
+      });
+
+      container.querySelectorAll('[data-delete]').forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm(`Delete scenario "${btn.dataset.delete}"?`)) return;
+          try {
+            await fetch('/api/scenario-files/' + encodeURIComponent(btn.dataset.delete), {method:'DELETE'});
+            load();
+          } catch(e) { alert('Delete failed: ' + e.message); }
+        };
+      });
+
+    } catch(err) {
+      container.innerHTML = `<div class="empty">Error: ${VC.esc(err.message)}</div>`;
+    }
+  }
+
+  load();
+})();
+</script>
+{% endblock %}

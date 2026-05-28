@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}VoiceCheck — Live Run{% endblock %}
+
+{% block content %}
+<div id="live-content">
+  <div class="loading"><div class="spinner"></div><br>Connecting to run…</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function() {
+  const runId = {{ run_id | tojson }};
+  const container = document.getElementById('live-content');
+
+  let turnTotal = null;
+  let turnsDone = 0;
+  let runStartTime = Date.now();
+  let timerInterval = null;
+
+  // ── Build shell HTML ───────────────────────────────────────
+  container.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h1 id="live-scenario">Starting…</h1>
+        <p class="page-subtitle">Run <code>${runId.slice(0,8)}</code> &nbsp;·&nbsp; <span id="live-elapsed">0s</span></p>
+      </div>
+      <div style="display:flex;gap:0.5rem;align-items:center;">
+        <span id="live-status-badge"></span>
+        <button class="btn btn-danger" id="btn-cancel" style="display:none;">Cancel</button>
+      </div>
+    </div>
+
+    <div id="live-progress-bar" style="height:4px;background:var(--border);border-radius:2px;margin-bottom:1.5rem;overflow:hidden;display:none;">
+      <div id="live-progress-fill" style="height:100%;background:var(--accent);width:0%;transition:width 0.4s;"></div>
+    </div>
+
+    <div id="live-turns"></div>
+
+    <div id="live-summary" style="display:none;"></div>
+  `;
+
+  // ── Timer ────────────────────────────────────────────────
+  timerInterval = setInterval(() => {
+    const s = Math.floor((Date.now() - runStartTime) / 1000);
+    document.getElementById('live-elapsed').textContent = s >= 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`;
+  }, 1000);
+
+  function setStatus(text, color) {
+    const el = document.getElementById('live-status-badge');
+    el.innerHTML = `<span class="badge" style="background:${color};color:#fff;">${text}</span>`;
+  }
+
+  // ── Cancel button ─────────────────────────────────────────
+  document.getElementById('btn-cancel').onclick = async () => {
+    try {
+      await VC.fetchJSON(`/api/runs/${runId}/cancel`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    } catch(e) { /* ignore */ }
+  };
+
+  // ── Turn card builder ────────────────────────────────────
+  function renderTurnCard(ev) {
+    const div = document.createElement('div');
+    div.className = 'turn-card';
+    div.id = `live-turn-${ev.turn}`;
+
+    const evals = (ev.evaluations || []);
+    let evalsHtml = '';
+    for (const e of evals) {
+      const cls = e.passed ? 'eval-pass' : 'eval-fail';
+      evalsHtml += `<div style="margin-bottom:0.3rem;"><span class="eval-badge ${cls}">${VC.esc(e.type)}: ${(e.score||0).toFixed(2)}</span> <span style="font-size:0.78rem;color:var(--text-muted);">${VC.esc(e.reason||'')}</span></div>`;
+    }
+
+    const toolCalls = (ev.tool_calls || []);
+    let toolHtml = '';
+    for (const tc of toolCalls) {
+      toolHtml += `<div style="font-size:0.78rem;background:rgba(234,179,8,0.1);border:1px solid rgba(234,179,8,0.2);border-radius:4px;padding:0.3rem 0.5rem;margin-bottom:0.25rem;">⚙ <strong>${VC.esc(tc.name)}</strong> <code>${VC.esc(JSON.stringify(tc.args||{})).slice(0,80)}</code>${tc.result!=null?` → <code>${VC.esc(JSON.stringify(tc.result)).slice(0,60)}</code>`:''}</div>`;
+    }
+
+    const fbMs = ev.first_byte_ms ? `${ev.first_byte_ms.toFixed(0)}ms` : '—';
+    const totalMs = ev.total_ms ? `${ev.total_ms.toFixed(0)}ms` : '—';
+    const totalLabel = ev.total_turns != null ? ` / ${ev.total_turns}` : '';
+
+    div.innerHTML = `
+      <div class="turn-header">
+        <span class="turn-number">Turn ${ev.turn + 1}${totalLabel}</span>
+        ${VC.badge(ev.passed)}
+        ${ev.error ? `<span style="color:var(--red);font-size:0.78rem;margin-left:0.5rem;">${VC.esc(ev.error)}</span>` : ''}
+      </div>
+      <div class="turn-text"><span class="speaker speaker-user">User:</span>${VC.esc(ev.user_text||'')}</div>
+      <div class="turn-text"><span class="speaker speaker-agent">Agent:</span>${VC.esc(ev.agent_text||'(no response)')}</div>
+      ${toolCalls.length ? `<div style="margin:0.4rem 0;">${toolHtml}</div>` : ''}
+      <div class="turn-metrics">
+        <span>First byte: <strong class="${VC.latencyClass(ev.first_byte_ms)}">${fbMs}</strong></span>
+        <span>Total: <strong class="${VC.latencyClass(ev.total_ms)}">${totalMs}</strong></span>
+      </div>
+      ${evals.length ? `<div class="turn-evals" style="margin-top:0.4rem;">${evalsHtml}</div>` : ''}
+    `;
+    return div;
+  }
+
+  // ── SSE connection ────────────────────────────────────────
+  setStatus('Running', 'var(--accent)');
+  document.getElementById('btn-cancel').style.display = '';
+
+  const evtSource = new EventSource(`/api/runs/${runId}/events`);
+
+  evtSource.onmessage = (e) => {
+    let ev;
+    try { ev = JSON.parse(e.data); } catch { return; }
+
+    if (ev.type === 'ping') return;
+
+    if (ev.type === 'run_started') {
+      document.getElementById('live-scenario').textContent = ev.scenario || 'Running…';
+      runStartTime = ev.ts ? ev.ts * 1000 : Date.now();
+      return;
+    }
+
+    if (ev.type === 'turn_completed') {
+      turnsDone++;
+      if (ev.total_turns) {
+        turnTotal = ev.total_turns;
+        const pct = (turnsDone / turnTotal) * 100;
+        document.getElementById('live-progress-bar').style.display = '';
+        document.getElementById('live-progress-fill').style.width = pct + '%';
+      }
+      document.getElementById('live-turns').appendChild(renderTurnCard(ev));
+      // Scroll to new turn
+      window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'});
+      return;
+    }
+
+    if (ev.type === 'run_completed') {
+      evtSource.close();
+      clearInterval(timerInterval);
+      document.getElementById('btn-cancel').style.display = 'none';
+      if (ev.total_turns) {
+        document.getElementById('live-progress-fill').style.width = '100%';
+        document.getElementById('live-progress-fill').style.background = ev.passed ? 'var(--green)' : 'var(--red)';
+      }
+      setStatus(ev.passed ? 'PASSED' : 'FAILED', ev.passed ? 'var(--green)' : 'var(--red)');
+      const summary = document.getElementById('live-summary');
+      summary.style.display = '';
+      summary.innerHTML = `
+        <div class="turn-card" style="margin-top:1rem;background:${ev.passed?'rgba(34,197,94,0.06)':'rgba(239,68,68,0.06)'};border-color:${ev.passed?'rgba(34,197,94,0.2)':'rgba(239,68,68,0.2)'};">
+          <strong style="font-size:1rem;">${ev.passed ? '✓ Run passed' : '✗ Run failed'}</strong>
+          <span style="margin-left:1rem;color:var(--text-muted);">${ev.passed_turns}/${ev.total_turns} turns passed</span>
+          <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+            <a href="/run/${runId}" class="btn btn-secondary">View Full Report</a>
+            <a href="/scenarios" class="btn btn-ghost">Back to Scenarios</a>
+          </div>
+        </div>`;
+      return;
+    }
+
+    if (ev.type === 'run_failed') {
+      evtSource.close();
+      clearInterval(timerInterval);
+      document.getElementById('btn-cancel').style.display = 'none';
+      setStatus('FAILED', 'var(--red)');
+      const summary = document.getElementById('live-summary');
+      summary.style.display = '';
+      summary.innerHTML = `
+        <div class="turn-card" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);">
+          <strong style="color:var(--red);">Run failed</strong>
+          <div style="margin-top:0.4rem;font-size:0.85rem;color:var(--text-muted);">${VC.esc(ev.error||'Unknown error')}</div>
+          <div style="margin-top:0.75rem;"><a href="/scenarios" class="btn btn-ghost">Back to Scenarios</a></div>
+        </div>`;
+      return;
+    }
+
+    if (ev.type === 'run_cancelled') {
+      evtSource.close();
+      clearInterval(timerInterval);
+      document.getElementById('btn-cancel').style.display = 'none';
+      setStatus('Cancelled', 'var(--yellow)');
+      const summary = document.getElementById('live-summary');
+      summary.style.display = '';
+      summary.innerHTML = `
+        <div class="turn-card">
+          <strong>Run cancelled</strong>
+          <div style="margin-top:0.75rem;"><a href="/scenarios" class="btn btn-ghost">Back to Scenarios</a></div>
+        </div>`;
+      return;
+    }
+  };
+
+  evtSource.onerror = () => {
+    evtSource.close();
+    clearInterval(timerInterval);
+    setStatus('Disconnected', 'var(--yellow)');
+    document.getElementById('btn-cancel').style.display = 'none';
+    const summary = document.getElementById('live-summary');
+    summary.style.display = '';
+    summary.innerHTML = `
+      <div class="turn-card">
+        <span style="color:var(--yellow);">Connection lost.</span>
+        <div style="margin-top:0.5rem;">
+          <a href="/run/${runId}" class="btn btn-secondary">View Final Report</a>
+        </div>
+      </div>`;
+  };
+
+})();
+</script>
+{% endblock %}

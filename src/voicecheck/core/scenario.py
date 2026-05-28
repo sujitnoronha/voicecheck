@@ -15,6 +15,33 @@ from pydantic import BaseModel, Field
 from voicecheck.core.evaluator import get_evaluator
 from voicecheck.core.transport import get_transport
 from voicecheck.core.types import EvalContext, EvalResult, Timer, TurnResult
+from voicecheck.observability import (
+    ATTR_AGENT_TEXT,
+    ATTR_EVAL_PASSED,
+    ATTR_EVAL_REASON,
+    ATTR_EVAL_SCORE,
+    ATTR_EVAL_TYPE,
+    ATTR_FIRST_BYTE_MS,
+    ATTR_SCENARIO_MODE,
+    ATTR_SCENARIO_NAME,
+    ATTR_TOTAL_MS,
+    ATTR_TRANSPORT_TYPE,
+    ATTR_TURN_INDEX,
+    ATTR_TURN_PASSED,
+    ATTR_USER_TEXT,
+    SPAN_CONVERSATION_EVAL,
+    SPAN_EVALUATOR,
+    SPAN_SCENARIO,
+    SPAN_STT,
+    SPAN_TRANSPORT_CONNECT,
+    SPAN_TRANSPORT_DISCONNECT,
+    SPAN_TRANSPORT_RECEIVE,
+    SPAN_TRANSPORT_SEND,
+    SPAN_TTS,
+    SPAN_TURN,
+    set_attrs,
+    span,
+)
 
 logger = logging.getLogger("voicecheck.core.scenario")
 
@@ -119,6 +146,23 @@ class SettingsConfig(BaseModel):
     silence_threshold: float = 1.5
 
 
+class ObservabilityYamlConfig(BaseModel):
+    """OpenTelemetry tracing config (optional).
+
+    When enabled, voicecheck emits OTel spans for every scenario, turn,
+    audio phase, evaluator, and tool call. CLI flags
+    (``--otel-endpoint``, ``--otel-console``, ``--otel-service``) take
+    precedence over these YAML values.
+    """
+
+    enabled: bool = False
+    service_name: str = "voicecheck"
+    endpoint: str | None = None
+    headers: dict[str, str] = Field(default_factory=dict)
+    console: bool = False
+    resource_attrs: dict[str, str] = Field(default_factory=dict)
+
+
 class PersonaConfig(BaseModel):
     """Persona for free-flowing conversations (alternative to scripted turns)."""
 
@@ -181,6 +225,7 @@ class Scenario(BaseModel):
     # Guided flow mode (persona + structured steps with per-step goals/evals)
     flow: list[FlowStepConfig] = Field(default_factory=list)
     settings: SettingsConfig = Field(default_factory=SettingsConfig)
+    observability: ObservabilityYamlConfig = Field(default_factory=ObservabilityYamlConfig)
 
     @property
     def is_questions_mode(self) -> bool:
@@ -433,9 +478,17 @@ class ScenarioRunner:
     4. Evaluate: Run each evaluator on the turn results
     """
 
-    def __init__(self, scenario: Scenario, skip_llm_judge: bool = False) -> None:
+    def __init__(
+        self,
+        scenario: Scenario,
+        skip_llm_judge: bool = False,
+        turn_callback: Any | None = None,
+    ) -> None:
         self.scenario = scenario
         self.skip_llm_judge = skip_llm_judge
+        # Optional async callback(turn_result, turn_index, total_turns | None)
+        # called after every turn. Used by the dashboard for live SSE streaming.
+        self.turn_callback = turn_callback
 
     @classmethod
     def from_yaml(cls, path: str | Path, **kwargs: Any) -> ScenarioRunner:
@@ -445,13 +498,46 @@ class ScenarioRunner:
     async def run(self) -> ScenarioReport:
         """Execute the full scenario and return a report."""
         self._preflight_checks()
-        if self.scenario.is_guided_mode:
-            return await self._run_guided()
-        if self.scenario.is_questions_mode:
-            return await self._run_questions()
-        if self.scenario.is_persona_mode:
-            return await self._run_persona()
-        return await self._run_scripted()
+        scenario = self.scenario
+        with span(
+            SPAN_SCENARIO,
+            attrs={
+                ATTR_SCENARIO_NAME: scenario.name,
+                ATTR_SCENARIO_MODE: self._scenario_mode(),
+                ATTR_TRANSPORT_TYPE: scenario.transport.type,
+                "voicecheck.transport.mode": scenario.transport.mode,
+                "voicecheck.audio.tts_provider": scenario.audio.tts_provider,
+                "voicecheck.audio.stt_provider": scenario.audio.stt_provider,
+                "voicecheck.audio.language": scenario.audio.language or "auto",
+            },
+        ) as scenario_span:
+            if scenario.is_guided_mode:
+                report = await self._run_guided()
+            elif scenario.is_questions_mode:
+                report = await self._run_questions()
+            elif scenario.is_persona_mode:
+                report = await self._run_persona()
+            else:
+                report = await self._run_scripted()
+            set_attrs(
+                scenario_span,
+                {
+                    "voicecheck.scenario.passed": report.passed,
+                    "voicecheck.scenario.passed_turns": report.passed_turns,
+                    "voicecheck.scenario.total_turns": report.total_turns,
+                },
+            )
+            return report
+
+    def _scenario_mode(self) -> str:
+        s = self.scenario
+        if s.is_guided_mode:
+            return "guided"
+        if s.is_questions_mode:
+            return "questions"
+        if s.is_persona_mode:
+            return "persona"
+        return "scripted"
 
     def _preflight_checks(self) -> None:
         """Verify required API keys and config before running."""
@@ -546,6 +632,75 @@ class ScenarioRunner:
         }
         return transport, transport_config
 
+    async def _tts_synthesize(self, tts: Any, text: str) -> list:
+        """TTS-synthesize ``text`` inside a span."""
+        with span(
+            SPAN_TTS,
+            attrs={
+                "voicecheck.tts.provider": self.scenario.audio.tts_provider,
+                "voicecheck.tts.text": text,
+                "voicecheck.tts.text_length": len(text),
+            },
+        ) as s:
+            with Timer() as timer:
+                frames = await tts.synthesize(text)
+            set_attrs(
+                s,
+                {
+                    "voicecheck.tts.duration_ms": timer.elapsed_ms,
+                    "voicecheck.tts.frames": len(frames),
+                },
+            )
+            return frames
+
+    async def _transport_send(self, transport: Any, frames: list) -> None:
+        with span(
+            SPAN_TRANSPORT_SEND,
+            attrs={
+                ATTR_TRANSPORT_TYPE: self.scenario.transport.type,
+                "voicecheck.transport.send.frames": len(frames),
+            },
+        ):
+            await transport.send_audio(frames)
+
+    async def _transport_receive(self, transport: Any) -> list:
+        with span(
+            SPAN_TRANSPORT_RECEIVE,
+            attrs={ATTR_TRANSPORT_TYPE: self.scenario.transport.type},
+        ) as s:
+            frames = await transport.receive_audio(
+                timeout=self.scenario.settings.turn_timeout,
+                silence_threshold=self.scenario.settings.silence_threshold,
+            )
+            set_attrs(
+                s,
+                {
+                    ATTR_FIRST_BYTE_MS: transport.metrics.first_byte_ms,
+                    ATTR_TOTAL_MS: transport.metrics.total_ms,
+                    "voicecheck.transport.receive.frames": len(frames),
+                },
+            )
+            return frames
+
+    async def _stt_transcribe(self, stt: Any, frames: list) -> Any:
+        with span(
+            SPAN_STT,
+            attrs={
+                "voicecheck.stt.provider": self.scenario.audio.stt_provider,
+                "voicecheck.stt.input_frames": len(frames),
+            },
+        ) as s:
+            with Timer() as timer:
+                transcript = await stt.transcribe(frames)
+            set_attrs(
+                s,
+                {
+                    "voicecheck.stt.duration_ms": timer.elapsed_ms,
+                    "voicecheck.stt.text": transcript.text,
+                },
+            )
+            return transcript
+
     def _apply_degradation(self, frames: list) -> list:
         """Apply audio degradation if configured. Returns frames unchanged if not."""
         deg = self.scenario.audio.degradation
@@ -579,7 +734,8 @@ class ScenarioRunner:
         conversation: list[dict] = []
 
         try:
-            await transport.connect(transport_config)
+            with span(SPAN_TRANSPORT_CONNECT, attrs={ATTR_TRANSPORT_TYPE: scenario.transport.type}):
+                await transport.connect(transport_config)
 
             for i, turn_config in enumerate(scenario.turns):
                 user_text = turn_config.user or f"[silence: {turn_config.silence.duration_s}s]"
@@ -588,96 +744,122 @@ class ScenarioRunner:
 
                 user_frames: list = []
                 turn_metadata: dict = {}
-                try:
-                    # Optional pre-turn pause
-                    if turn_config.pause_before_ms > 0:
-                        await asyncio.sleep(turn_config.pause_before_ms / 1000.0)
+                with span(
+                    SPAN_TURN,
+                    attrs={
+                        ATTR_TURN_INDEX: i,
+                        ATTR_USER_TEXT: turn_config.user or "[silence]",
+                    },
+                ) as turn_span:
+                    try:
+                        # Optional pre-turn pause
+                        if turn_config.pause_before_ms > 0:
+                            await asyncio.sleep(turn_config.pause_before_ms / 1000.0)
 
-                    # Prepare user audio: silence or TTS
-                    if turn_config.silence:
-                        from voicecheck.audio.utils import generate_silence
+                        # Prepare user audio: silence or TTS
+                        if turn_config.silence:
+                            from voicecheck.audio.utils import generate_silence
 
-                        user_frames = generate_silence(
-                            duration_s=turn_config.silence.duration_s,
-                            sample_rate=scenario.audio.sample_rate,
-                            num_channels=scenario.audio.channels,
+                            user_frames = generate_silence(
+                                duration_s=turn_config.silence.duration_s,
+                                sample_rate=scenario.audio.sample_rate,
+                                num_channels=scenario.audio.channels,
+                            )
+                            turn_metadata["silence"] = True
+                            turn_metadata["silence_duration_s"] = turn_config.silence.duration_s
+                        else:
+                            user_frames = await self._tts_synthesize(tts, turn_config.user)
+                            transport.metrics.tts_duration_ms = (
+                                sum(f.duration_s for f in user_frames) * 1000
+                            )
+
+                        # Apply audio degradation if configured
+                        user_frames = self._apply_degradation(user_frames)
+                        transport.metrics.user_audio_duration_ms = (
+                            sum(f.duration_s for f in user_frames) * 1000
                         )
-                        turn_metadata["silence"] = True
-                        turn_metadata["silence_duration_s"] = turn_config.silence.duration_s
-                    else:
-                        with Timer() as tts_timer:
-                            user_frames = await tts.synthesize(turn_config.user)
-                        transport.metrics.tts_duration_ms = tts_timer.elapsed_ms
 
-                    # Apply audio degradation if configured
-                    user_frames = self._apply_degradation(user_frames)
-                    transport.metrics.user_audio_duration_ms = (
-                        sum(f.duration_s for f in user_frames) * 1000
+                        # Send and receive (with optional interruption)
+                        await self._transport_send(transport, user_frames)
+
+                        if turn_config.interrupt:
+                            # Start receiving in background, then interrupt
+                            receive_task = asyncio.create_task(
+                                transport.receive_audio(
+                                    timeout=scenario.settings.turn_timeout,
+                                    silence_threshold=scenario.settings.silence_threshold,
+                                )
+                            )
+                            try:
+                                await asyncio.sleep(turn_config.interrupt.after_ms / 1000.0)
+                                interrupt_frames = await self._tts_synthesize(
+                                    tts, turn_config.interrupt.with_text
+                                )
+                                interrupt_frames = self._apply_degradation(interrupt_frames)
+                                await self._transport_send(transport, interrupt_frames)
+                                agent_frames = await receive_task
+                            except Exception:
+                                receive_task.cancel()
+                                try:
+                                    await receive_task
+                                except (asyncio.CancelledError, Exception):
+                                    pass
+                                raise
+                            turn_metadata["interrupted"] = True
+                            turn_metadata["interrupt_after_ms"] = turn_config.interrupt.after_ms
+                            turn_metadata["interrupt_text"] = turn_config.interrupt.with_text
+                        else:
+                            agent_frames = await self._transport_receive(transport)
+
+                        transcript = await self._stt_transcribe(stt, agent_frames)
+                        agent_text = transcript.text
+                        logger.info("Agent said: %s", agent_text[:100])
+                        turn_error = ""
+                    except Exception as e:
+                        logger.error("Turn %d failed: %s", i, e)
+                        agent_text = ""
+                        agent_frames = []
+                        turn_error = str(e)[:300]
+
+                    conversation.append({"role": "user", "text": turn_config.user or "[silence]"})
+                    conversation.append({"role": "agent", "text": agent_text})
+
+                    # Drain tool calls before evaluators so tool-aware
+                    # evaluators (tool_called, tool_sequence) can read them
+                    # off the EvalContext. The same list is attached to the
+                    # TurnResult for the report.
+                    tool_calls = transport.take_tool_calls()
+
+                    eval_context = EvalContext(
+                        user_text=turn_config.user,
+                        agent_text=agent_text,
+                        agent_audio=agent_frames,
+                        metrics=transport.metrics,
+                        turn_index=i,
+                        scenario_name=scenario.name,
+                        conversation=list(conversation),
+                        turn_metadata=turn_metadata,
+                        tool_calls=tool_calls,
                     )
 
-                    # Send and receive (with optional interruption)
-                    await transport.send_audio(user_frames)
+                    eval_results = await self._run_evaluators(turn_config.expect, eval_context)
 
-                    if turn_config.interrupt:
-                        # Start receiving in background, then interrupt
-                        receive_task = asyncio.create_task(
-                            transport.receive_audio(
-                                timeout=scenario.settings.turn_timeout,
-                                silence_threshold=scenario.settings.silence_threshold,
-                            )
-                        )
-                        try:
-                            await asyncio.sleep(turn_config.interrupt.after_ms / 1000.0)
-                            interrupt_frames = await tts.synthesize(turn_config.interrupt.with_text)
-                            interrupt_frames = self._apply_degradation(interrupt_frames)
-                            await transport.send_audio(interrupt_frames)
-                            agent_frames = await receive_task
-                        except Exception:
-                            receive_task.cancel()
-                            try:
-                                await receive_task
-                            except (asyncio.CancelledError, Exception):
-                                pass
-                            raise
-                        turn_metadata["interrupted"] = True
-                        turn_metadata["interrupt_after_ms"] = turn_config.interrupt.after_ms
-                        turn_metadata["interrupt_text"] = turn_config.interrupt.with_text
-                    else:
-                        agent_frames = await transport.receive_audio(
-                            timeout=scenario.settings.turn_timeout,
-                            silence_threshold=scenario.settings.silence_threshold,
-                        )
+                    turn_passed = (
+                        not turn_error
+                        and (bool(agent_text) or bool(agent_frames))
+                        and all(r.passed for r in eval_results)
+                    )
+                    set_attrs(
+                        turn_span,
+                        {
+                            ATTR_AGENT_TEXT: agent_text,
+                            ATTR_TURN_PASSED: turn_passed,
+                            "voicecheck.turn.error": turn_error,
+                            "voicecheck.turn.tool_call_count": len(tool_calls),
+                        },
+                    )
 
-                    with Timer() as stt_timer:
-                        transcript = await stt.transcribe(agent_frames)
-                    transport.metrics.stt_duration_ms = stt_timer.elapsed_ms
-                    agent_text = transcript.text
-                    logger.info("Agent said: %s", agent_text[:100])
-                    turn_error = ""
-                except Exception as e:
-                    logger.error("Turn %d failed: %s", i, e)
-                    agent_text = ""
-                    agent_frames = []
-                    turn_error = str(e)[:300]
-
-                conversation.append({"role": "user", "text": turn_config.user or "[silence]"})
-                conversation.append({"role": "agent", "text": agent_text})
-
-                eval_context = EvalContext(
-                    user_text=turn_config.user,
-                    agent_text=agent_text,
-                    agent_audio=agent_frames,
-                    metrics=transport.metrics,
-                    turn_index=i,
-                    scenario_name=scenario.name,
-                    conversation=list(conversation),
-                    turn_metadata=turn_metadata,
-                )
-
-                eval_results = await self._run_evaluators(turn_config.expect, eval_context)
-
-                report.turns.append(
-                    TurnResult(
+                    turn_result = TurnResult(
                         turn_index=i,
                         user_text=turn_config.user,
                         agent_text=agent_text,
@@ -686,10 +868,16 @@ class ScenarioRunner:
                         metrics=transport.metrics,
                         eval_results=eval_results,
                         error=turn_error,
+                        tool_calls=tool_calls,
                     )
-                )
+                    report.turns.append(turn_result)
+                    if self.turn_callback:
+                        await self.turn_callback(turn_result, i, len(scenario.turns))
         finally:
-            await transport.disconnect()
+            with span(
+                SPAN_TRANSPORT_DISCONNECT, attrs={ATTR_TRANSPORT_TYPE: scenario.transport.type}
+            ):
+                await transport.disconnect()
 
         logger.info(
             "Scenario %r complete: %d/%d turns passed",
@@ -715,54 +903,73 @@ class ScenarioRunner:
         conversation: list[dict] = []
 
         try:
-            await transport.connect(transport_config)
+            with span(SPAN_TRANSPORT_CONNECT, attrs={ATTR_TRANSPORT_TYPE: scenario.transport.type}):
+                await transport.connect(transport_config)
 
             for i, user_text in enumerate(questions):
                 logger.info("── Question %d/%d: %s", i + 1, len(questions), user_text[:60])
                 transport.reset_metrics()
 
                 user_frames: list = []
-                try:
-                    with Timer() as tts_timer:
-                        user_frames = await tts.synthesize(user_text)
-                    transport.metrics.tts_duration_ms = tts_timer.elapsed_ms
-                    user_frames = self._apply_degradation(user_frames)
-                    transport.metrics.user_audio_duration_ms = (
-                        sum(f.duration_s for f in user_frames) * 1000
+                with span(
+                    SPAN_TURN,
+                    attrs={ATTR_TURN_INDEX: i, ATTR_USER_TEXT: user_text},
+                ) as turn_span:
+                    try:
+                        user_frames = await self._tts_synthesize(tts, user_text)
+                        transport.metrics.tts_duration_ms = (
+                            sum(f.duration_s for f in user_frames) * 1000
+                        )
+                        user_frames = self._apply_degradation(user_frames)
+                        transport.metrics.user_audio_duration_ms = (
+                            sum(f.duration_s for f in user_frames) * 1000
+                        )
+                        await self._transport_send(transport, user_frames)
+                        agent_frames = await self._transport_receive(transport)
+                        transcript = await self._stt_transcribe(stt, agent_frames)
+                        agent_text = transcript.text
+                        logger.info("Agent said: %s", agent_text[:100])
+                        turn_error = ""
+                    except Exception as e:
+                        logger.error("Question %d failed: %s", i, e)
+                        agent_text = ""
+                        agent_frames = []
+                        turn_error = str(e)[:300]
+
+                    conversation.append({"role": "user", "text": user_text})
+                    conversation.append({"role": "agent", "text": agent_text})
+
+                    tool_calls = transport.take_tool_calls()
+                    eval_context = EvalContext(
+                        user_text=user_text,
+                        agent_text=agent_text,
+                        agent_audio=agent_frames,
+                        metrics=transport.metrics,
+                        turn_index=i,
+                        scenario_name=scenario.name,
+                        conversation=list(conversation),
+                        tool_calls=tool_calls,
                     )
-                    await transport.send_audio(user_frames)
-                    agent_frames = await transport.receive_audio(
-                        timeout=scenario.settings.turn_timeout,
-                        silence_threshold=scenario.settings.silence_threshold,
+                    eval_results = await self._run_evaluators(
+                        scenario.per_turn_expect, eval_context
                     )
-                    with Timer() as stt_timer:
-                        transcript = await stt.transcribe(agent_frames)
-                    transport.metrics.stt_duration_ms = stt_timer.elapsed_ms
-                    agent_text = transcript.text
-                    logger.info("Agent said: %s", agent_text[:100])
-                    turn_error = ""
-                except Exception as e:
-                    logger.error("Question %d failed: %s", i, e)
-                    agent_text = ""
-                    agent_frames = []
-                    turn_error = str(e)[:300]
 
-                conversation.append({"role": "user", "text": user_text})
-                conversation.append({"role": "agent", "text": agent_text})
+                    turn_passed = (
+                        not turn_error
+                        and (bool(agent_text) or bool(agent_frames))
+                        and all(r.passed for r in eval_results)
+                    )
+                    set_attrs(
+                        turn_span,
+                        {
+                            ATTR_AGENT_TEXT: agent_text,
+                            ATTR_TURN_PASSED: turn_passed,
+                            "voicecheck.turn.error": turn_error,
+                            "voicecheck.turn.tool_call_count": len(tool_calls),
+                        },
+                    )
 
-                eval_context = EvalContext(
-                    user_text=user_text,
-                    agent_text=agent_text,
-                    agent_audio=agent_frames,
-                    metrics=transport.metrics,
-                    turn_index=i,
-                    scenario_name=scenario.name,
-                    conversation=list(conversation),
-                )
-                eval_results = await self._run_evaluators(scenario.per_turn_expect, eval_context)
-
-                report.turns.append(
-                    TurnResult(
+                    turn_result = TurnResult(
                         turn_index=i,
                         user_text=user_text,
                         agent_text=agent_text,
@@ -771,10 +978,16 @@ class ScenarioRunner:
                         metrics=transport.metrics,
                         eval_results=eval_results,
                         error=turn_error,
+                        tool_calls=tool_calls,
                     )
-                )
+                    report.turns.append(turn_result)
+                    if self.turn_callback:
+                        await self.turn_callback(turn_result, i, len(questions))
         finally:
-            await transport.disconnect()
+            with span(
+                SPAN_TRANSPORT_DISCONNECT, attrs={ATTR_TRANSPORT_TYPE: scenario.transport.type}
+            ):
+                await transport.disconnect()
 
         # Post-conversation evaluation
         if (
@@ -804,7 +1017,27 @@ class ScenarioRunner:
                 min_score=scenario.conversation_eval.min_score,
                 model=scenario.conversation_eval.model,
             )
-            conv_result = await engine.evaluate_conversation(conversation, engine_eval)
+            with span(
+                SPAN_CONVERSATION_EVAL,
+                attrs={
+                    "voicecheck.conversation_eval.criteria_count": len(engine_eval.criteria),
+                    "voicecheck.conversation_eval.model": engine_eval.model,
+                    "voicecheck.conversation_eval.min_score": engine_eval.min_score,
+                },
+            ) as conv_span:
+                conv_result = await engine.evaluate_conversation(conversation, engine_eval)
+                set_attrs(
+                    conv_span,
+                    {
+                        "voicecheck.conversation_eval.score": conv_result.get("overall_score", 0.0),
+                        "voicecheck.conversation_eval.passed": conv_result.get(
+                            "overall_passed", False
+                        ),
+                        "voicecheck.conversation_eval.reason": conv_result.get(
+                            "overall_reason", ""
+                        ),
+                    },
+                )
             report.conversation_eval = conv_result
             logger.info(
                 "Conversation eval: score=%.2f passed=%s reason=%s",
@@ -847,7 +1080,8 @@ class ScenarioRunner:
         conversation: list[dict] = []
 
         try:
-            await transport.connect(transport_config)
+            with span(SPAN_TRANSPORT_CONNECT, attrs={ATTR_TRANSPORT_TYPE: scenario.transport.type}):
+                await transport.connect(transport_config)
 
             # Generate opening message
             user_text = await engine.generate_opening()
@@ -859,49 +1093,66 @@ class ScenarioRunner:
                 transport.reset_metrics()
 
                 user_frames: list = []
-                try:
-                    # TTS → degrade → send → receive → STT
-                    with Timer() as tts_timer:
-                        user_frames = await tts.synthesize(user_text)
-                    transport.metrics.tts_duration_ms = tts_timer.elapsed_ms
-                    user_frames = self._apply_degradation(user_frames)
-                    transport.metrics.user_audio_duration_ms = (
-                        sum(f.duration_s for f in user_frames) * 1000
+                with span(
+                    SPAN_TURN,
+                    attrs={ATTR_TURN_INDEX: i, ATTR_USER_TEXT: user_text},
+                ) as turn_span:
+                    try:
+                        user_frames = await self._tts_synthesize(tts, user_text)
+                        transport.metrics.tts_duration_ms = (
+                            sum(f.duration_s for f in user_frames) * 1000
+                        )
+                        user_frames = self._apply_degradation(user_frames)
+                        transport.metrics.user_audio_duration_ms = (
+                            sum(f.duration_s for f in user_frames) * 1000
+                        )
+                        await self._transport_send(transport, user_frames)
+                        agent_frames = await self._transport_receive(transport)
+                        transcript = await self._stt_transcribe(stt, agent_frames)
+                        agent_text = transcript.text
+                        logger.info("Agent said: %s", agent_text[:100])
+                        turn_error = ""
+                    except Exception as e:
+                        logger.error("Persona turn %d failed: %s", i, e)
+                        agent_text = ""
+                        agent_frames = []
+                        turn_error = str(e)[:300]
+
+                    conversation.append({"role": "user", "text": user_text})
+                    conversation.append({"role": "agent", "text": agent_text})
+
+                    # Per-turn evaluators (latency, turn_count, etc.)
+                    tool_calls = transport.take_tool_calls()
+                    eval_context = EvalContext(
+                        user_text=user_text,
+                        agent_text=agent_text,
+                        agent_audio=agent_frames,
+                        metrics=transport.metrics,
+                        turn_index=i,
+                        scenario_name=scenario.name,
+                        conversation=list(conversation),
+                        tool_calls=tool_calls,
                     )
-                    await transport.send_audio(user_frames)
-                    agent_frames = await transport.receive_audio(
-                        timeout=scenario.settings.turn_timeout,
-                        silence_threshold=scenario.settings.silence_threshold,
+                    eval_results = await self._run_evaluators(
+                        scenario.per_turn_expect, eval_context
                     )
-                    with Timer() as stt_timer:
-                        transcript = await stt.transcribe(agent_frames)
-                    transport.metrics.stt_duration_ms = stt_timer.elapsed_ms
-                    agent_text = transcript.text
-                    logger.info("Agent said: %s", agent_text[:100])
-                    turn_error = ""
-                except Exception as e:
-                    logger.error("Persona turn %d failed: %s", i, e)
-                    agent_text = ""
-                    agent_frames = []
-                    turn_error = str(e)[:300]
 
-                conversation.append({"role": "user", "text": user_text})
-                conversation.append({"role": "agent", "text": agent_text})
+                    turn_passed = (
+                        not turn_error
+                        and (bool(agent_text) or bool(agent_frames))
+                        and all(r.passed for r in eval_results)
+                    )
+                    set_attrs(
+                        turn_span,
+                        {
+                            ATTR_AGENT_TEXT: agent_text,
+                            ATTR_TURN_PASSED: turn_passed,
+                            "voicecheck.turn.error": turn_error,
+                            "voicecheck.turn.tool_call_count": len(tool_calls),
+                        },
+                    )
 
-                # Per-turn evaluators (latency, turn_count, etc.)
-                eval_context = EvalContext(
-                    user_text=user_text,
-                    agent_text=agent_text,
-                    agent_audio=agent_frames,
-                    metrics=transport.metrics,
-                    turn_index=i,
-                    scenario_name=scenario.name,
-                    conversation=list(conversation),
-                )
-                eval_results = await self._run_evaluators(scenario.per_turn_expect, eval_context)
-
-                report.turns.append(
-                    TurnResult(
+                    turn_result = TurnResult(
                         turn_index=i,
                         user_text=user_text,
                         agent_text=agent_text,
@@ -910,15 +1161,21 @@ class ScenarioRunner:
                         metrics=transport.metrics,
                         eval_results=eval_results,
                         error=turn_error,
+                        tool_calls=tool_calls,
                     )
-                )
+                    report.turns.append(turn_result)
+                    if self.turn_callback:
+                        await self.turn_callback(turn_result, i, None)
 
                 # Generate next user message (unless this is the last turn)
                 if i < persona_cfg.max_turns - 1:
                     user_text = await engine.generate_next(agent_text)
 
         finally:
-            await transport.disconnect()
+            with span(
+                SPAN_TRANSPORT_DISCONNECT, attrs={ATTR_TRANSPORT_TYPE: scenario.transport.type}
+            ):
+                await transport.disconnect()
 
         # Post-conversation evaluation (uses LLM, skip if --skip-llm-judge)
         if (
@@ -978,7 +1235,8 @@ class ScenarioRunner:
         conversation: list[dict] = []
 
         try:
-            await transport.connect(transport_config)
+            with span(SPAN_TRANSPORT_CONNECT, attrs={ATTR_TRANSPORT_TYPE: scenario.transport.type}):
+                await transport.connect(transport_config)
 
             for i, step in enumerate(flow_steps):
                 step_label = step.name or f"step-{i + 1}"
@@ -992,61 +1250,83 @@ class ScenarioRunner:
                 transport.reset_metrics()
 
                 user_frames: list = []
-                try:
-                    # Generate user message for this step
-                    if i == 0:
-                        user_text = await engine.generate_opening_guided(step.goal)
-                    else:
-                        last_agent_text = conversation[-1]["text"] if conversation else ""
-                        user_text = await engine.generate_next_guided(last_agent_text, step.goal)
+                with span(
+                    SPAN_TURN,
+                    attrs={
+                        ATTR_TURN_INDEX: i,
+                        "voicecheck.flow.step": step_label,
+                        "voicecheck.flow.goal": step.goal,
+                    },
+                ) as turn_span:
+                    try:
+                        # Generate user message for this step
+                        if i == 0:
+                            user_text = await engine.generate_opening_guided(step.goal)
+                        else:
+                            last_agent_text = conversation[-1]["text"] if conversation else ""
+                            user_text = await engine.generate_next_guided(
+                                last_agent_text, step.goal
+                            )
 
-                    logger.info("Persona said: %s", user_text[:100])
+                        logger.info("Persona said: %s", user_text[:100])
+                        set_attrs(turn_span, {ATTR_USER_TEXT: user_text})
 
-                    # TTS → degrade → send → receive → STT
-                    with Timer() as tts_timer:
-                        user_frames = await tts.synthesize(user_text)
-                    transport.metrics.tts_duration_ms = tts_timer.elapsed_ms
-                    user_frames = self._apply_degradation(user_frames)
-                    transport.metrics.user_audio_duration_ms = (
-                        sum(f.duration_s for f in user_frames) * 1000
+                        user_frames = await self._tts_synthesize(tts, user_text)
+                        transport.metrics.tts_duration_ms = (
+                            sum(f.duration_s for f in user_frames) * 1000
+                        )
+                        user_frames = self._apply_degradation(user_frames)
+                        transport.metrics.user_audio_duration_ms = (
+                            sum(f.duration_s for f in user_frames) * 1000
+                        )
+                        await self._transport_send(transport, user_frames)
+                        agent_frames = await self._transport_receive(transport)
+                        transcript = await self._stt_transcribe(stt, agent_frames)
+                        agent_text = transcript.text
+                        logger.info("Agent said: %s", agent_text[:100])
+                        turn_error = ""
+                    except Exception as e:
+                        logger.error("Step %s failed: %s", step_label, e)
+                        user_text = getattr(e, "_user_text", "") or f"[step {step_label} failed]"
+                        agent_text = ""
+                        agent_frames = []
+                        turn_error = str(e)[:300]
+
+                    conversation.append({"role": "user", "text": user_text})
+                    conversation.append({"role": "agent", "text": agent_text})
+
+                    tool_calls = transport.take_tool_calls()
+                    eval_context = EvalContext(
+                        user_text=user_text,
+                        agent_text=agent_text,
+                        agent_audio=agent_frames,
+                        metrics=transport.metrics,
+                        turn_index=i,
+                        scenario_name=scenario.name,
+                        conversation=list(conversation),
+                        tool_calls=tool_calls,
                     )
-                    await transport.send_audio(user_frames)
-                    agent_frames = await transport.receive_audio(
-                        timeout=scenario.settings.turn_timeout,
-                        silence_threshold=scenario.settings.silence_threshold,
+
+                    # Run step-specific evaluators + per-turn evaluators
+                    all_expects = list(step.expect) + list(scenario.per_turn_expect)
+                    eval_results = await self._run_evaluators(all_expects, eval_context)
+
+                    turn_passed = (
+                        not turn_error
+                        and (bool(agent_text) or bool(agent_frames))
+                        and all(r.passed for r in eval_results)
                     )
-                    with Timer() as stt_timer:
-                        transcript = await stt.transcribe(agent_frames)
-                    transport.metrics.stt_duration_ms = stt_timer.elapsed_ms
-                    agent_text = transcript.text
-                    logger.info("Agent said: %s", agent_text[:100])
-                    turn_error = ""
-                except Exception as e:
-                    logger.error("Step %s failed: %s", step_label, e)
-                    user_text = getattr(e, "_user_text", "") or f"[step {step_label} failed]"
-                    agent_text = ""
-                    agent_frames = []
-                    turn_error = str(e)[:300]
+                    set_attrs(
+                        turn_span,
+                        {
+                            ATTR_AGENT_TEXT: agent_text,
+                            ATTR_TURN_PASSED: turn_passed,
+                            "voicecheck.turn.error": turn_error,
+                            "voicecheck.turn.tool_call_count": len(tool_calls),
+                        },
+                    )
 
-                conversation.append({"role": "user", "text": user_text})
-                conversation.append({"role": "agent", "text": agent_text})
-
-                eval_context = EvalContext(
-                    user_text=user_text,
-                    agent_text=agent_text,
-                    agent_audio=agent_frames,
-                    metrics=transport.metrics,
-                    turn_index=i,
-                    scenario_name=scenario.name,
-                    conversation=list(conversation),
-                )
-
-                # Run step-specific evaluators + per-turn evaluators
-                all_expects = list(step.expect) + list(scenario.per_turn_expect)
-                eval_results = await self._run_evaluators(all_expects, eval_context)
-
-                report.turns.append(
-                    TurnResult(
+                    turn_result = TurnResult(
                         turn_index=i,
                         user_text=user_text,
                         agent_text=agent_text,
@@ -1055,11 +1335,17 @@ class ScenarioRunner:
                         metrics=transport.metrics,
                         eval_results=eval_results,
                         error=turn_error,
+                        tool_calls=tool_calls,
                     )
-                )
+                    report.turns.append(turn_result)
+                    if self.turn_callback:
+                        await self.turn_callback(turn_result, i, len(flow_steps))
 
         finally:
-            await transport.disconnect()
+            with span(
+                SPAN_TRANSPORT_DISCONNECT, attrs={ATTR_TRANSPORT_TYPE: scenario.transport.type}
+            ):
+                await transport.disconnect()
 
         # Post-conversation evaluation (uses LLM, skip if --skip-llm-judge)
         if (
@@ -1073,7 +1359,27 @@ class ScenarioRunner:
                 min_score=scenario.conversation_eval.min_score,
                 model=scenario.conversation_eval.model,
             )
-            conv_result = await engine.evaluate_conversation(conversation, engine_eval)
+            with span(
+                SPAN_CONVERSATION_EVAL,
+                attrs={
+                    "voicecheck.conversation_eval.criteria_count": len(engine_eval.criteria),
+                    "voicecheck.conversation_eval.model": engine_eval.model,
+                    "voicecheck.conversation_eval.min_score": engine_eval.min_score,
+                },
+            ) as conv_span:
+                conv_result = await engine.evaluate_conversation(conversation, engine_eval)
+                set_attrs(
+                    conv_span,
+                    {
+                        "voicecheck.conversation_eval.score": conv_result.get("overall_score", 0.0),
+                        "voicecheck.conversation_eval.passed": conv_result.get(
+                            "overall_passed", False
+                        ),
+                        "voicecheck.conversation_eval.reason": conv_result.get(
+                            "overall_reason", ""
+                        ),
+                    },
+                )
             report.conversation_eval = conv_result
             logger.info(
                 "Conversation eval: score=%.2f passed=%s reason=%s",
@@ -1100,18 +1406,30 @@ class ScenarioRunner:
             if self.skip_llm_judge and expect.type in _LLM_EVALUATOR_TYPES:
                 logger.info("  [SKIP] %s: skipped (--skip-llm-judge)", expect.type)
                 continue
-            try:
-                evaluator_cls = get_evaluator(expect.type)
-                kwargs = expect.model_dump(exclude={"type"})
-                evaluator = evaluator_cls(**kwargs)
-                result = await evaluator.evaluate(context)
-            except Exception as e:
-                logger.error("Evaluator %r crashed: %s", expect.type, e)
-                result = EvalResult(
-                    evaluator_type=expect.type,
-                    passed=False,
-                    score=0.0,
-                    reason=f"Evaluator error: {e}",
+            with span(
+                SPAN_EVALUATOR,
+                attrs={ATTR_EVAL_TYPE: expect.type},
+            ) as eval_span:
+                try:
+                    evaluator_cls = get_evaluator(expect.type)
+                    kwargs = expect.model_dump(exclude={"type"})
+                    evaluator = evaluator_cls(**kwargs)
+                    result = await evaluator.evaluate(context)
+                except Exception as e:
+                    logger.error("Evaluator %r crashed: %s", expect.type, e)
+                    result = EvalResult(
+                        evaluator_type=expect.type,
+                        passed=False,
+                        score=0.0,
+                        reason=f"Evaluator error: {e}",
+                    )
+                set_attrs(
+                    eval_span,
+                    {
+                        ATTR_EVAL_PASSED: result.passed,
+                        ATTR_EVAL_SCORE: result.score,
+                        ATTR_EVAL_REASON: result.reason,
+                    },
                 )
             results.append(result)
 
