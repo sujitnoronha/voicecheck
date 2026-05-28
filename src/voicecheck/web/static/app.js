@@ -12,6 +12,16 @@ const VC = {
     return resp.json();
   },
 
+  /** Fetch with custom options, return parsed JSON (for POST/DELETE etc). */
+  async fetchJSON(path, opts = {}) {
+    const resp = await fetch(path, opts);
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`API ${resp.status}: ${text}`);
+    }
+    return resp.json();
+  },
+
   /** Format ISO date to readable local string. */
   formatDate(iso) {
     if (!iso) return "\u2014";

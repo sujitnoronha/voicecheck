@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}VoiceCheck — Baselines{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Baselines</h1>
+    <p class="page-subtitle">Golden snapshots for regression comparison</p>
+  </div>
+</div>
+
+<div id="baselines-content">
+  <div class="loading"><div class="spinner"></div><br>Loading baselines...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function() {
+  const container = document.getElementById('baselines-content');
+
+  async function load() {
+    try {
+      const rows = await VC.fetchAPI('/api/baselines');
+      if (!rows.length) {
+        container.innerHTML = `
+          <div class="empty">
+            No baselines saved yet.<br>
+            Run a scenario and click <strong>Save as Baseline</strong> on the run detail page,
+            or use <code>voicecheck baseline save &lt;name&gt; --scenario &lt;name&gt;</code>.
+          </div>`;
+        return;
+      }
+
+      // Group by scenario
+      const byScenario = {};
+      for (const r of rows) {
+        (byScenario[r.scenario_name] = byScenario[r.scenario_name] || []).push(r);
+      }
+
+      let html = '';
+      for (const [scenario, baselines] of Object.entries(byScenario)) {
+        html += `<h2 style="margin:1.5rem 0 0.75rem;">${VC.esc(scenario)}</h2>
+          <div class="table-wrap"><table>
+            <thead><tr>
+              <th>Name</th>
+              <th>Pass Rate</th>
+              <th>Avg First Byte</th>
+              <th>p95 First Byte</th>
+              <th>Avg Total</th>
+              <th>p95 Total</th>
+              <th>Saved</th>
+              <th></th>
+            </tr></thead><tbody>`;
+
+        for (const b of baselines) {
+          let m = {};
+          try { m = JSON.parse(b.metrics_json || '{}'); } catch(e) {}
+          const pr = m.pass_rate != null ? (m.pass_rate * 100).toFixed(1) + '%' : '—';
+          html += `<tr>
+            <td><strong>${VC.esc(b.name)}</strong>${b.notes ? `<div style="font-size:0.75rem;color:var(--text-muted);">${VC.esc(b.notes)}</div>` : ''}</td>
+            <td class="${m.pass_rate >= 0.9 ? 'pass' : 'fail'}">${pr}</td>
+            <td class="${VC.latencyClass(m.avg_first_byte_ms)}">${VC.formatMs(m.avg_first_byte_ms)}</td>
+            <td class="${VC.latencyClass(m.p95_first_byte_ms)}">${VC.formatMs(m.p95_first_byte_ms)}</td>
+            <td class="${VC.latencyClass(m.avg_total_ms)}">${VC.formatMs(m.avg_total_ms)}</td>
+            <td class="${VC.latencyClass(m.p95_total_ms)}">${VC.formatMs(m.p95_total_ms)}</td>
+            <td style="color:var(--text-muted);font-size:0.8rem;">${b.created_at ? b.created_at.slice(0,16).replace('T',' ') : '—'}</td>
+            <td>
+              <a href="/run/${VC.esc(b.run_id)}" class="btn btn-ghost" style="font-size:0.78rem;padding:0.2rem 0.5rem;">Source run</a>
+              <button class="btn btn-danger" style="font-size:0.78rem;padding:0.2rem 0.5rem;" data-id="${VC.esc(b.id)}">Delete</button>
+            </td>
+          </tr>`;
+        }
+        html += '</tbody></table></div>';
+      }
+      container.innerHTML = html;
+
+      container.querySelectorAll('[data-id]').forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm('Delete this baseline?')) return;
+          try {
+            await fetch('/api/baselines/' + btn.dataset.id, { method: 'DELETE' });
+            load();
+          } catch (e) {
+            alert('Delete failed: ' + e.message);
+          }
+        };
+      });
+
+    } catch (err) {
+      container.innerHTML = `<div class="empty">Error: ${VC.esc(err.message)}</div>`;
+    }
+  }
+
+  load();
+})();
+</script>
+{% endblock %}
