@@ -22,6 +22,7 @@ def _synchronized(method):
 
     return wrapper
 
+
 DEFAULT_TOLERANCE: dict[str, dict[str, Any]] = {
     "pass_rate": {"max_drop": 0.0, "fail_ci": True},
     "p95_first_byte_ms": {"max_increase_pct": 20.0, "fail_ci": False},
@@ -199,9 +200,7 @@ def format_comparison_table(regressions: list[Regression], baseline_name: str) -
 class BaselineStore:
     """CRUD for baselines table — can share a DB connection with ResultStore."""
 
-    def __init__(
-        self, conn: sqlite3.Connection, lock: threading.RLock | None = None
-    ) -> None:
+    def __init__(self, conn: sqlite3.Connection, lock: threading.RLock | None = None) -> None:
         self._conn = conn
         self._lock = lock or threading.RLock()
         self._ensure_schema()

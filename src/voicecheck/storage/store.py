@@ -37,6 +37,7 @@ def _synchronized(method):
 
     return wrapper
 
+
 DEFAULT_DB_PATH = Path.home() / ".voicecheck" / "results.db"
 DEFAULT_OUTPUT_DIR = Path.home() / ".voicecheck"
 
