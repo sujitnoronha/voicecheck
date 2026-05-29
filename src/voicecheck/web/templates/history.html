@@ -150,10 +150,22 @@
     content.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading history...</div>';
     try {
       const scenario = scenarioSel.value;
-      let url = '/api/runs?limit=500&offset=0';
-      if (scenario) url += '&scenario=' + encodeURIComponent(scenario);
-      const data = await VC.fetchAPI(url);
-      allRuns = data.runs || [];
+      const scenarioParam = scenario ? '&scenario=' + encodeURIComponent(scenario) : '';
+      // /api/runs caps `limit` at 200, so page through in chunks to load the
+      // full history (the table paginates client-side from allRuns).
+      const CHUNK = 200;
+      let runs = [];
+      let fetchOffset = 0;
+      let total = Infinity;
+      while (fetchOffset < total) {
+        const data = await VC.fetchAPI(`/api/runs?limit=${CHUNK}&offset=${fetchOffset}${scenarioParam}`);
+        const batch = data.runs || [];
+        runs = runs.concat(batch);
+        total = data.total ?? runs.length;
+        if (batch.length < CHUNK) break;
+        fetchOffset += CHUNK;
+      }
+      allRuns = runs;
       offset = 0;
       render();
     } catch (err) {
