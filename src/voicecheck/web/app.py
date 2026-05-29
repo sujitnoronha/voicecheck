@@ -324,6 +324,7 @@ def create_app(
             out_base=out_base,
             scenarios_dir=scenarios_dir,
             queue=q,
+            queues=run_queues,
             cancel_flags=run_cancel,
         )
 
@@ -741,6 +742,7 @@ async def _execute_run(
     out_base: Path,
     scenarios_dir: Path,
     queue: asyncio.Queue,
+    queues: dict[str, asyncio.Queue],
     cancel_flags: dict[str, bool],
 ) -> None:
     """Background task: load + run scenario, stream events to queue."""
@@ -748,6 +750,7 @@ async def _execute_run(
     from voicecheck.storage.output import RunOutputWriter
 
     writer: RunOutputWriter | None = None
+    tmp_path: Path | None = None  # set only when running from inline yaml_text
 
     async def _turn_cb(turn_result: Any, turn_idx: int, total: int | None) -> None:
         evals = [
@@ -802,12 +805,17 @@ async def _execute_run(
             ) as f:
                 f.write(yaml_text)
                 tmp_path = Path(f.name)
+            load_path = tmp_path
             scenario_yaml = yaml_text
         else:
-            p = scenarios_dir / f"{scenario_name}.yaml"
+            # Confine the user-supplied scenario_name to scenarios_dir — blocks
+            # path traversal (e.g. "../../etc/foo") via the request body field.
+            p = (scenarios_dir / f"{scenario_name}.yaml").resolve()
+            if scenarios_dir.resolve() not in p.parents:
+                raise ValueError(f"Invalid scenario name: {scenario_name}")
             if not p.exists():
                 raise FileNotFoundError(f"Scenario '{scenario_name}' not found in {scenarios_dir}")
-            tmp_path = p
+            load_path = p
             scenario_yaml = p.read_text(encoding="utf-8")
 
         # Start output writer
@@ -815,9 +823,7 @@ async def _execute_run(
         writer.write_scenario(scenario_yaml)
         writer.log("run_started", scenario=scenario_name)
 
-        scenario = load_scenario(tmp_path)
-        if yaml_text:
-            tmp_path.unlink(missing_ok=True)
+        scenario = load_scenario(load_path)
 
         runner = ScenarioRunner(scenario, turn_callback=_turn_cb)
         report = await runner.run()
@@ -863,13 +869,18 @@ async def _execute_run(
     finally:
         if writer:
             writer.close()
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
         await queue.put(None)  # sentinel — closes SSE stream
+        # Drop the live-run registries even if no SSE client ever connected,
+        # otherwise the queue (and its buffered turn events) leaks for the
+        # process lifetime. A late client falls back to the DB replay path.
+        queues.pop(run_id, None)
+        cancel_flags.pop(run_id, None)
 
 
 def _update_run_status(store: ResultStore, run_id: str, status: str) -> None:
     try:
-        conn = store._get_conn()
-        conn.execute("UPDATE runs SET status = ? WHERE id = ?", (status, run_id))
-        conn.commit()
+        store.update_run_status(run_id, status)
     except Exception:
         pass

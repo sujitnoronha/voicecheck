@@ -2,12 +2,25 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import sqlite3
+import threading
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+
+
+def _synchronized(method):
+    # Guard the shared sqlite connection (held jointly with ResultStore) so a
+    # baseline write cannot commit mid-way through ResultStore.save_report.
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 DEFAULT_TOLERANCE: dict[str, dict[str, Any]] = {
     "pass_rate": {"max_drop": 0.0, "fail_ci": True},
@@ -186,14 +199,19 @@ def format_comparison_table(regressions: list[Regression], baseline_name: str) -
 class BaselineStore:
     """CRUD for baselines table — can share a DB connection with ResultStore."""
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    def __init__(
+        self, conn: sqlite3.Connection, lock: threading.RLock | None = None
+    ) -> None:
         self._conn = conn
+        self._lock = lock or threading.RLock()
         self._ensure_schema()
 
+    @_synchronized
     def _ensure_schema(self) -> None:
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
 
+    @_synchronized
     def save(
         self,
         name: str,
@@ -223,6 +241,7 @@ class BaselineStore:
         self._conn.commit()
         return bid
 
+    @_synchronized
     def get(self, name: str, scenario_name: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             "SELECT * FROM baselines WHERE scenario_name = ? AND name = ?",
@@ -230,6 +249,7 @@ class BaselineStore:
         ).fetchone()
         return dict(row) if row else None
 
+    @_synchronized
     def list(self, scenario_name: str | None = None) -> list[dict[str, Any]]:
         if scenario_name:
             rows = self._conn.execute(
@@ -242,6 +262,7 @@ class BaselineStore:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    @_synchronized
     def delete(self, name: str, scenario_name: str) -> bool:
         cur = self._conn.execute(
             "DELETE FROM baselines WHERE scenario_name = ? AND name = ?",
