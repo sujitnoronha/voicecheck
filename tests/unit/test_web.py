@@ -540,6 +540,26 @@ class TestRunTrigger:
         resp = c.post("/api/runs", json={})
         assert resp.status_code == 422
 
+    def test_trigger_run_scenario_name_traversal_is_blocked(self, client_writable):
+        """scenario_name is a request-body field, so routing never strips '../'.
+        _execute_run must confine it to scenarios_dir, not read arbitrary .yaml."""
+        c, out_dir = client_writable
+        sentinel = out_dir.parent / "run_escaped.yaml"
+        sentinel.write_text("name: SECRET-OUTSIDE\ndescription: leaked\n")
+
+        resp = c.post("/api/runs", json={"scenario_name": "../../run_escaped"})
+        assert resp.status_code == 200, resp.text  # queued; failure surfaces on the run
+        run_id = resp.json()["run_id"]
+
+        # TestClient runs the background task synchronously — it must have failed
+        # at path confinement, never reaching transport/execution.
+        run = c.get(f"/api/runs/{run_id}").json()
+        assert run["status"] == "failed", run
+        # And the out-of-dir file must not have been read into the run snapshot.
+        snap = c.get(f"/api/runs/{run_id}/scenario")
+        assert "SECRET-OUTSIDE" not in snap.text
+        assert sentinel.read_text().startswith("name: SECRET-OUTSIDE")  # untouched
+
 
 class TestCallLogEndpoint:
     """The Trace tab in run_detail.html depends on /api/runs/{id}/calllog."""

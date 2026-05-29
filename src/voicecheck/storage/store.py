@@ -9,9 +9,11 @@ Stores every test run with full turn-level detail so you can:
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import sqlite3
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +22,20 @@ from typing import Any
 from voicecheck.core.scenario import ScenarioReport
 
 logger = logging.getLogger("voicecheck.storage")
+
+
+def _synchronized(method):
+    # Serialize access to the shared sqlite connection. The connection is used
+    # from both the async request handlers and threadpool-run sync handlers, so
+    # without this a concurrent commit could flush save_report's half-written
+    # run+turns transaction. The lock is an RLock — reentrant for methods that
+    # call other synchronized methods (e.g. get_all_scenario_stats).
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 DEFAULT_DB_PATH = Path.home() / ".voicecheck" / "results.db"
 DEFAULT_OUTPUT_DIR = Path.home() / ".voicecheck"
@@ -66,6 +82,7 @@ class ResultStore:
         self.db_path = Path(db_path) if db_path else DEFAULT_DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn: sqlite3.Connection | None = None
+        self._lock = threading.RLock()
         self._init_db()
 
     def _init_db(self) -> None:
@@ -96,7 +113,7 @@ class ResultStore:
         # Initialise baselines table
         from voicecheck.storage.baselines import BaselineStore
 
-        self._baselines = BaselineStore(conn)
+        self._baselines = BaselineStore(conn, self._lock)
 
     def _get_conn(self) -> sqlite3.Connection:
         if self._conn is None:
@@ -110,6 +127,7 @@ class ResultStore:
     def baselines(self):
         return self._baselines
 
+    @_synchronized
     def save_report(
         self,
         report: ScenarioReport,
@@ -202,6 +220,7 @@ class ResultStore:
         logger.info("Saved run %s (%s)", run_id[:8], report.scenario_name)
         return run_id
 
+    @_synchronized
     def list_runs(
         self,
         scenario_name: str | None = None,
@@ -222,6 +241,7 @@ class ResultStore:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    @_synchronized
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         """Get a single run with its turns."""
         conn = self._get_conn()
@@ -243,6 +263,7 @@ class ResultStore:
             result["conversation_eval"] = json.loads(result["conversation_eval"])
         return result
 
+    @_synchronized
     def get_call_log(self, run_id: str) -> list[dict[str, Any]] | None:
         """Return parsed call_log.jsonl events for a run, or None if unavailable."""
         conn = self._get_conn()
@@ -262,6 +283,7 @@ class ResultStore:
                     pass
         return events
 
+    @_synchronized
     def get_scenario_file(self, run_id: str) -> str | None:
         """Return the scenario.yaml snapshot content for a run, or None."""
         conn = self._get_conn()
@@ -271,6 +293,7 @@ class ResultStore:
         p = Path(row["run_dir"]) / "scenario.yaml"
         return p.read_text(encoding="utf-8") if p.exists() else None
 
+    @_synchronized
     def get_scenario_history(self, scenario_name: str, limit: int = 100) -> list[dict[str, Any]]:
         """Get historical runs for a scenario (for trend charts)."""
         conn = self._get_conn()
@@ -283,6 +306,7 @@ class ResultStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    @_synchronized
     def get_scenarios(self) -> list[dict[str, Any]]:
         """Get summary stats per scenario."""
         conn = self._get_conn()
@@ -297,6 +321,7 @@ class ResultStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    @_synchronized
     def count_runs(self, scenario_name: str | None = None) -> int:
         """Count total runs, optionally filtered by scenario."""
         conn = self._get_conn()
@@ -309,6 +334,7 @@ class ResultStore:
             row = conn.execute("SELECT COUNT(*) FROM runs").fetchone()
         return row[0]
 
+    @_synchronized
     def get_scenario_percentiles(
         self,
         scenario_name: str,
@@ -341,6 +367,7 @@ class ResultStore:
             "p99": _percentile(values, 0.99),
         }
 
+    @_synchronized
     def get_all_scenario_stats(self) -> list[dict[str, Any]]:
         """Get scenarios with extended stats including percentiles."""
         scenarios = self.get_scenarios()
@@ -355,6 +382,7 @@ class ResultStore:
             s["p99_total_ms"] = total["p99"]
         return scenarios
 
+    @_synchronized
     def get_run_artifacts(self, run_id: str) -> dict[str, Any] | None:
         """Return artifact WAVs available for a run.
 
@@ -404,6 +432,7 @@ class ResultStore:
 
         return {"dir": str(dir_path), "full_conversation": full, "turns": turns}
 
+    @_synchronized
     def delete_run(self, run_id: str) -> bool:
         """Delete a run and its turns."""
         conn = self._get_conn()
@@ -411,6 +440,14 @@ class ResultStore:
         conn.commit()
         return cursor.rowcount > 0
 
+    @_synchronized
+    def update_run_status(self, run_id: str, status: str) -> None:
+        """Set the status of a run (e.g. completed/failed/cancelled)."""
+        conn = self._get_conn()
+        conn.execute("UPDATE runs SET status = ? WHERE id = ?", (status, run_id))
+        conn.commit()
+
+    @_synchronized
     def close(self) -> None:
         if self._conn:
             self._conn.close()

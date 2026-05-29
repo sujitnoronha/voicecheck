@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+### Fixed
+- **Path traversal in run trigger**: `POST /api/runs` confines the body-supplied `scenario_name` to the scenarios directory, closing an arbitrary `.yaml` file-read hole (the `{name}` routes were already guarded; the body field was not).
+- **Dashboard run stability**: serialize the shared SQLite connection so a concurrent write can no longer commit a half-written run, and always clean up the inline-YAML temp file and live-run queue when a run ends (no more leaks when no client connects).
+
 ## 0.2.0
 
 ### Added
