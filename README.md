@@ -1,10 +1,28 @@
+<div align="center">
+
 # VoiceCheck
+
+### End-to-end testing for voice agents
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests: 268 passing](https://img.shields.io/badge/tests-268%20passing-brightgreen.svg)](tests/)
+[![Tests: 357 passing](https://img.shields.io/badge/tests-357%20passing-brightgreen.svg)](tests/)
 
-**End-to-end testing for voice agents.** Write a YAML scenario. VoiceCheck synthesizes real audio, streams it through a real transport, captures the agent's reply, and grades the conversation — latency, tone, leaks, roleplay consistency, the lot. Runs on your laptop, in CI, or as a pytest test.
+Write a YAML scenario. VoiceCheck synthesizes real audio, streams it through a real transport,
+captures the agent's reply, and grades every turn — latency, tone, leaks, roleplay consistency, the lot.
+Runs on your laptop, in CI, or as a pytest test.
+
+<br/>
+
+![VoiceCheck CLI run](docs/assets/cli-demo.svg)
+
+<br/>
+
+**A self-hosted dashboard for every run — pass/fail trends, latency percentiles, full transcripts.**
+
+![VoiceCheck dashboard overview](docs/assets/dashboard-overview.png)
+
+</div>
 
 ```
   "Hello, how are you?"
@@ -690,6 +708,14 @@ The dashboard includes:
 - Latency trend charts over time
 - Pass/fail timeline
 - Expandable conversation transcripts with evaluator results
+
+**Drill into any run** — turn-by-turn transcript with per-turn latency and every evaluator's score:
+
+![Run detail with per-turn grading](docs/assets/run-detail.png)
+
+**Build and edit scenarios in the browser** — a structured form with a live YAML preview, so you never hand-write boilerplate:
+
+![Scenario builder with live YAML preview](docs/assets/scenario-builder.png)
 
 ## CLI Reference
 
