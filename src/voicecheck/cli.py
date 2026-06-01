@@ -150,7 +150,25 @@ def _ensure_registrations() -> None:
 @click.group()
 @click.version_option(package_name="voicecheck")
 def main() -> None:
-    """VoiceCheck — E2E testing for voice agents."""
+    """VoiceCheck — end-to-end testing for voice agents.
+
+    Write a YAML scenario; VoiceCheck synthesizes real audio, streams it through a
+    real transport (LiveKit, Daily, VAPI, Retell), captures the agent's reply, and
+    grades every turn (latency, tone, leaks, tool calls, and more).
+
+    \b
+    Quick start:
+      voicecheck run examples/echo_smoke.yaml --skip-llm-judge   # zero-key smoke test
+      voicecheck validate my_test.yaml                           # schema check
+      voicecheck run my_test.yaml                                # run a real scenario
+      voicecheck serve                                           # web dashboard
+
+    \b
+    Or let an AI coding agent set it up and write tests for you:
+      voicecheck install-skill   # then run /setup-voicecheck in Claude Code or Codex
+
+    Run `voicecheck COMMAND --help` for details on any command.
+    """
 
 
 # ── run ──────────────────────────────────────────────────────────
@@ -1036,6 +1054,90 @@ def schema(output: str | None) -> None:
         click.echo(f"Schema written to {output}")
     else:
         click.echo(s)
+
+
+# ── install-skill ─────────────────────────────────────────────────
+
+_BUNDLED_SKILLS = ["setup-voicecheck", "write-voicecheck-test"]
+
+
+@main.command(name="install-skill")
+@click.argument("name", required=False)
+@click.option("--codex", is_flag=True, help="Also install into ~/.agents/skills (Codex).")
+@click.option(
+    "--claude/--no-claude",
+    default=True,
+    help="Install into ~/.claude/skills (Claude Code). Default: yes.",
+)
+@click.option(
+    "--dir", "target_dir", type=click.Path(), default=None, help="Override the skills base dir."
+)
+@click.option("--force", is_flag=True, help="Overwrite an existing installed skill.")
+def install_skill(
+    name: str | None, codex: bool, claude: bool, target_dir: str | None, force: bool
+) -> None:
+    """Install the bundled Agent Skills so AI coding agents can drive VoiceCheck.
+
+    After `pip install voicecheck`, the skills ship inside the wheel but aren't yet
+    in your agent's skills directory. This copies them there:
+
+        voicecheck install-skill              # all skills, into ~/.claude/skills
+        voicecheck install-skill --codex      # also into ~/.agents/skills (Codex)
+        voicecheck install-skill setup-voicecheck   # just one
+
+    Then open Claude Code (or Codex) anywhere and run /setup-voicecheck or
+    /write-voicecheck-test.
+    """
+    import shutil
+    from importlib import resources
+
+    names = [name] if name else list(_BUNDLED_SKILLS)
+    unknown = [n for n in names if n not in _BUNDLED_SKILLS]
+    if unknown:
+        click.echo(
+            f"Unknown skill(s): {', '.join(unknown)}. Available: {', '.join(_BUNDLED_SKILLS)}",
+            err=True,
+        )
+        sys.exit(1)
+
+    if target_dir:
+        targets = [Path(target_dir)]
+    else:
+        targets = []
+        if claude:
+            targets.append(Path.home() / ".claude" / "skills")
+        if codex:
+            targets.append(Path.home() / ".agents" / "skills")
+    if not targets:
+        click.echo("Nothing to do — pass --claude and/or --codex (or --dir).", err=True)
+        sys.exit(1)
+
+    skills_root = Path(str(resources.files("voicecheck"))) / "skills"
+    installed = 0
+    for skill in names:
+        src = skills_root / skill
+        if not src.is_dir():
+            click.echo(f"Bundled skill not found in package: {skill}", err=True)
+            sys.exit(1)
+        for base in targets:
+            dest = base / skill
+            if dest.exists():
+                if not force:
+                    click.echo(f"skip  {dest}  (exists — use --force to overwrite)")
+                    continue
+                shutil.rmtree(dest)
+            base.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(src, dest)
+            for script in dest.glob("scripts/*"):
+                script.chmod(0o755)
+            click.echo(f"ok    {dest}")
+            installed += 1
+
+    if installed:
+        click.echo(
+            f"\nInstalled {installed} skill copy(ies). Open Claude Code or Codex and run "
+            "/setup-voicecheck."
+        )
 
 
 if __name__ == "__main__":

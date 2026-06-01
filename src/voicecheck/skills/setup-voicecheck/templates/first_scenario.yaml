@@ -1,0 +1,51 @@
+# VoiceCheck starter scenario.
+#
+#   voicecheck validate first_scenario.yaml   # schema check, no keys
+#   voicecheck run first_scenario.yaml --skip-llm-judge
+#
+# As written it uses the built-in `echo` transport so it passes with zero API
+# keys. To test a real agent, replace the transport block with the one for your
+# provider from references/transports.md (livekit / daily / vapi / retell) and
+# drop --skip-llm-judge once OPENAI_API_KEY (or ANTHROPIC_API_KEY) is set.
+
+name: "first scenario"
+
+transport:
+  type: echo
+  config:
+    response_text: "Hi! I can help you with that. What would you like to do?"
+    first_byte_delay_ms: 500
+  # --- real transport example (LiveKit direct) — uncomment + delete echo above ---
+  # type: livekit
+  # mode: direct
+  # config:
+  #   url: "${LIVEKIT_URL}"
+  #   api_key: "${LIVEKIT_API_KEY}"
+  #   api_secret: "${LIVEKIT_API_SECRET}"
+  #   agent_name: "${VOICECHECK_AGENT_NAME}"
+
+audio:
+  tts_provider: edge       # free, no API key
+  stt_provider: whisper    # local model, no API key (first run downloads ~150MB)
+  sample_rate: 16000
+  channels: 1
+
+turns:
+  - user: "Hi, can you help me?"
+    expect:
+      - type: latency
+        max_first_byte_ms: 3000
+      - type: turn_count
+        min_words: 4
+
+  # Uncomment once you've set an LLM key and are testing a real agent:
+  # - user: "Book me a flight to Lisbon next Friday."
+  #   expect:
+  #     - type: llm_judge
+  #       criteria: "Agent acknowledges the booking request and asks for details"
+  #       min_score: 0.7
+  #     - type: info_leakage   # no system-prompt / tool-name disclosures
+
+settings:
+  turn_timeout: 15.0
+  silence_threshold: 1.5

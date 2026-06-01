@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Agent Skills for Claude Code & Codex**: `setup-voicecheck` (install → smoke test → configure a transport → run a first scenario) and `write-voicecheck-test` (author a scenario with the right evaluators, validate/dry-run, wire into pytest). They ship inside the pip package; run `voicecheck install-skill` (add `--codex`) to drop them into your agent's skills directory, or get them automatically when you clone the repo.
+- `voicecheck install-skill` command, and a richer `voicecheck --help` overview.
+- `CLAUDE.md` / `AGENTS.md` so coding agents understand the testing model (scenario YAML, evaluators, validate→run, pytest marker) without invoking a skill.
+
 ## 0.2.1
 
 ### Fixed

@@ -40,5 +40,6 @@ Thumbs.db
 # Local-only docs (not published)
 RELEASING.md
 
-# Claude Code local state
-.claude/
+# Claude Code local state (but keep the bundled skills, which symlink into the package)
+.claude/*
+!.claude/skills/
