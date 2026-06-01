@@ -1,11 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-06-01
 
 ### Added
 - **Agent Skills for Claude Code & Codex**: `setup-voicecheck` (install → smoke test → configure a transport → run a first scenario) and `write-voicecheck-test` (author a scenario with the right evaluators, validate/dry-run, wire into pytest). They ship inside the pip package; run `voicecheck install-skill` (add `--codex`) to drop them into your agent's skills directory, or get them automatically when you clone the repo.
 - `voicecheck install-skill` command, and a richer `voicecheck --help` overview.
 - `CLAUDE.md` / `AGENTS.md` so coding agents understand the testing model (scenario YAML, evaluators, validate→run, pytest marker) without invoking a skill.
+- README now leads with visuals: an animated CLI demo plus dashboard, run-detail, and scenario-builder screenshots.
+
+### Fixed
+- **Dashboard History page**: loaded the full run list with `limit=500`, but the API caps `limit` at 200, so the page errored (422) for everyone. It now pages through `/api/runs` in 200-row chunks.
 
 ## 0.2.1
 

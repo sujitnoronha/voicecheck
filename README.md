@@ -83,7 +83,7 @@ Turn 1: [PASS]
 | | |
 |---|---|
 | **4 transports** | LiveKit, Daily/Pipecat, VAPI, Retell + [write your own](docs/reference/python-api.md#creating-a-custom-transport) |
-| **11 evaluators** | latency, keyword, turn_count, llm_judge, rubric_judge, emotional_tone, fact_accuracy, info_leakage, memory_recall, character_break, personality_consistency + [custom](docs/guides/evaluators.md#creating-custom-evaluators) |
+| **13 evaluators** | latency, keyword, turn_count, llm_judge, rubric_judge, emotional_tone, fact_accuracy, info_leakage, memory_recall, character_break, personality_consistency, tool_called, tool_sequence + [custom](docs/guides/evaluators.md#creating-custom-evaluators) |
 | **Commercial metrics library** | Preset dimensions for `rubric_judge`: task completion, PII handling, policy compliance, brand voice, empathy, and 7 more |
 | **Industry examples** | [examples/industries/](examples/industries) — banking, healthcare, insurance, e-commerce, hotel, restaurant, appointment booking |
 | **4 test modes** | Scripted, questions, persona (LLM-driven), guided flow |
@@ -95,7 +95,7 @@ Turn 1: [PASS]
 | **Soak testing** | `--duration 1h` with aggregate pass rate and latency trends |
 | **Dashboard** | SQLite storage, HTML reports, live FastAPI dashboard |
 | **Pure Python** | No numpy/scipy. Audio processing works everywhere |
-| **268 tests** | Comprehensive unit test coverage |
+| **357 tests** | Comprehensive unit test coverage |
 
 ---
 
