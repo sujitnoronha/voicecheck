@@ -1,0 +1,52 @@
+# VoiceCheck test scenario — edit, then:
+#   voicecheck validate <name>.yaml
+#   voicecheck run <name>.yaml --skip-llm-judge      # dry-run, no LLM cost
+#   voicecheck run <name>.yaml                        # full run (needs keys for llm_judge)
+#
+# Uses the echo transport so it validates + runs with zero keys. Swap the
+# transport block for your provider (see setup-voicecheck/references/transports.md).
+
+name: "<describe-what-this-tests>"
+
+transport:
+  type: echo
+  config:
+    response_text: "Sure — I can help with that. Could you tell me a bit more?"
+    first_byte_delay_ms: 500
+  # Real agent (LiveKit shown) — uncomment, delete echo above:
+  # type: livekit
+  # mode: direct
+  # config:
+  #   url: "${LIVEKIT_URL}"
+  #   api_key: "${LIVEKIT_API_KEY}"
+  #   api_secret: "${LIVEKIT_API_SECRET}"
+  #   agent_name: "${VOICECHECK_AGENT_NAME}"
+
+audio:
+  tts_provider: edge       # free; switch to openai for higher quality (needs OPENAI_API_KEY)
+  stt_provider: whisper    # local; first run downloads ~150MB
+  sample_rate: 16000
+  channels: 1
+
+turns:
+  # One entry per exchange. Each `expect:` evaluator must pass for the turn to pass.
+  - user: "Hi, can you help me with my account?"
+    expect:
+      - type: latency           # fast enough?
+        max_first_byte_ms: 2000
+      - type: turn_count        # not a one-word reply
+        min_words: 4
+      - type: info_leakage      # no system-prompt / tool-name leaks
+
+  - user: "What's my current balance?"
+    expect:
+      - type: emotional_tone
+        expected_emotions: ["helpful", "professional"]
+      # Judged behavior — needs an LLM key; remove --skip-llm-judge to score it:
+      - type: llm_judge
+        criteria: "Agent verifies identity or asks for account info before sharing a balance"
+        min_score: 0.7
+
+settings:
+  turn_timeout: 15.0
+  silence_threshold: 1.5

@@ -83,7 +83,7 @@ Turn 1: [PASS]
 | | |
 |---|---|
 | **4 transports** | LiveKit, Daily/Pipecat, VAPI, Retell + [write your own](docs/reference/python-api.md#creating-a-custom-transport) |
-| **11 evaluators** | latency, keyword, turn_count, llm_judge, rubric_judge, emotional_tone, fact_accuracy, info_leakage, memory_recall, character_break, personality_consistency + [custom](docs/guides/evaluators.md#creating-custom-evaluators) |
+| **13 evaluators** | latency, keyword, turn_count, llm_judge, rubric_judge, emotional_tone, fact_accuracy, info_leakage, memory_recall, character_break, personality_consistency, tool_called, tool_sequence + [custom](docs/guides/evaluators.md#creating-custom-evaluators) |
 | **Commercial metrics library** | Preset dimensions for `rubric_judge`: task completion, PII handling, policy compliance, brand voice, empathy, and 7 more |
 | **Industry examples** | [examples/industries/](examples/industries) — banking, healthcare, insurance, e-commerce, hotel, restaurant, appointment booking |
 | **4 test modes** | Scripted, questions, persona (LLM-driven), guided flow |
@@ -95,7 +95,7 @@ Turn 1: [PASS]
 | **Soak testing** | `--duration 1h` with aggregate pass rate and latency trends |
 | **Dashboard** | SQLite storage, HTML reports, live FastAPI dashboard |
 | **Pure Python** | No numpy/scipy. Audio processing works everywhere |
-| **268 tests** | Comprehensive unit test coverage |
+| **357 tests** | Comprehensive unit test coverage |
 
 ---
 
@@ -250,6 +250,40 @@ Turn 2: [PASS]
 Result: PASSED
 ============================================================
 ```
+
+## Use with Claude Code / Codex
+
+VoiceCheck ships two Agent Skills so an AI coding agent can set it up and write
+tests for you. They use the shared Agent Skills standard and work in both
+[Claude Code](https://claude.com/claude-code) and [Codex](https://developers.openai.com/codex).
+
+| Skill | What it does |
+|-------|--------------|
+| `setup-voicecheck` | Installs VoiceCheck, runs a zero-key smoke test, configures a transport + audio providers, scaffolds and runs your first scenario. |
+| `write-voicecheck-test` | Turns a description of your agent's expected behavior into a scenario YAML with the right evaluators, validates + dry-runs it, and wires it into pytest. |
+
+The skills ship **inside the pip package**, so you don't need to clone the repo.
+After installing, run one command to drop them into your agent's skills directory:
+
+```bash
+pip install voicecheck
+voicecheck install-skill            # → ~/.claude/skills (Claude Code)
+voicecheck install-skill --codex    # also → ~/.agents/skills (Codex)
+```
+
+Then open Claude Code (or Codex) in any project and run:
+
+```
+/setup-voicecheck        # install + configure + run your first scenario
+/write-voicecheck-test   # author a scenario with the right evaluators + pytest
+```
+
+(In Codex, pick them from `/skills` or mention `$setup-voicecheck`.)
+
+**Cloning the repo instead?** The skills auto-load from `.claude/skills/` (and
+`.agents/skills/` for Codex) — no install step needed. The repo's `CLAUDE.md` /
+`AGENTS.md` also teach the agent the testing model, so it can author scenarios
+correctly even without invoking a skill.
 
 ## Transport Providers
 
